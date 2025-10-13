@@ -1,0 +1,45 @@
+.object-type-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.object-type-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 15px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 100px; /* Fixed width for blocks */
+  height: 100px; /* Fixed height for blocks */
+  text-align: center;
+}
+
+.object-type-block:hover {
+  border-color: #007bff;
+  box-shadow: 0 4px 8px rgba(0, 123, 255, 0.2);
+}
+
+.object-type-block.selected {
+  background-color: #e0f7fa;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px #007bff;
+}
+
+.object-type-icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 5px;
+}
+
+.object-type-block p {
+  margin: 0;
+  font-size: 0.9em;
+  font-weight: bold;
+  color: #333;
+}

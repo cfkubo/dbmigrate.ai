@@ -1,0 +1,37 @@
+The StatusCode.UNAVAILABLE error indicates that your application cannot connect to the trace collector (Jaeger/OpenTelemetry Collector) at
+  my-jaeger-collector:4317. This usually happens if the collector isn't running, or if the hostname/port is incorrect.
+
+  Here's how to address both issues:
+
+  1. Resolving StatusCode.UNAVAILABLE Error
+
+   1. Verify Jaeger/Collector Status: Ensure your Jaeger instance or OpenTelemetry Collector is running and accessible. If you're running
+      Jaeger in Docker, make sure the container is up and the ports are correctly mapped.
+       * If you're running Jaeger locally using the command I provided in tracing.md:
+
+   1         docker run -d --name jaeger \
+   2           -e COLLECTOR_OTLP_ENABLED=true \
+   3           -p 16686:16686 \
+   4           -p 4317:4317 \
+   5           -p 4318:4318 \
+   6           jaegertracing/all-in-one:latest
+          Then your application should connect to http://localhost:4317.
+
+   2. Check `OTEL_EXPORTER_OTLP_ENDPOINT`:
+       * If running locally: Make sure the OTEL_EXPORTER_OTLP_ENDPOINT environment variable is either not set (so it defaults to
+         http://localhost:4317) or explicitly set to http://localhost:4317.
+
+   1         # Option 1: Unset the variable if it's pointing to 'my-jaeger-collector'
+   2         unset OTEL_EXPORTER_OTLP_ENDPOINT
+   3
+   4         # Option 2: Explicitly set it
+   5         export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+       * If running in Docker Compose: If your application and Jaeger are in the same Docker Compose network, my-jaeger-collector should be
+         the service name of your Jaeger container. Ensure the service name matches and the port is correct.
+
+  2. Getting the Trace ID for Searching
+
+  To get the trace ID, you can extract it from the current OpenTelemetry span and log it. This allows you to easily find the trace in
+  Jaeger/Zipkin by searching for that ID.
+
+  I'll add a simple logging mechanism to api/main.py to demonstrate how to get the trace ID for each request.

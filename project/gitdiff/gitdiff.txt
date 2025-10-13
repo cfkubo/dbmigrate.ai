@@ -1,0 +1,1102 @@
+diff --git a/.env b/.env
+index 0409c96..31649c6 100644
+--- a/.env
++++ b/.env
+@@ -1,12 +1,12 @@
+ # PostgreSQL Configuration
+-POSTGRES_HOST=192.168.106.2
++POSTGRES_HOST=localhost
+ POSTGRES_PORT=5432
+ POSTGRES_DB=postgres
+ POSTGRES_USER=postgres
+ POSTGRES_PASSWORD=postgres
+ 
+ # Oracle Configuration
+-ORACLE_HOST=192.168.106.2
++ORACLE_HOST=localhost
+ ORACLE_PORT=1521
+ ORACLE_USER=migrator
+ ORACLE_PASSWORD=password
+@@ -14,8 +14,8 @@ ORACLE_SERVICE_NAME=xe
+ ORACLE_SID=xe
+ 
+ # RabbitMQ Configuration
+-RABBITMQ_HOST=192.168.106.2
+-RABBITMQ_URL=amqp://guest:guest@192.168.106.2:5672/%2F
++RABBITMQ_HOST=localhost #192.168.106.2
++RABBITMQ_URL=amqp://guest:guest@localhost:5672/%2F
+ 
+ # Redis Configuration
+ REDIS_HOST=192.168.106.2
+diff --git a/api/database.py b/api/database.py
+index e677b5f..dc7d685 100644
+--- a/api/database.py
++++ b/api/database.py
+@@ -7,6 +7,7 @@ import os
+ from typing import Optional
+ from contextlib import contextmanager
+ import datetime
++import json
+ 
+ from app import API_URL
+ 
+@@ -58,6 +59,7 @@ def get_job_table_names() -> list[str]:
+         "index_extraction_jobs",
+         "package_extraction_jobs",
+         "trigger_extraction_jobs",
++        "sql_execution_jobs",
+     ]
+ 
+ def get_paginated_jobs_from_table(table_name: str, page: int = 1, size: int = 20, search: Optional[str] = None, status: Optional[str] = None) -> dict:
+@@ -86,7 +88,8 @@ def get_paginated_jobs_from_table(table_name: str, page: int = 1, size: int = 20
+         total_jobs = cursor.fetchone()[0]
+         total_pages = (total_jobs + size - 1) // size if size > 0 else 1
+ 
+-        select_query = "SELECT * " + base_query + " ORDER BY created_at DESC NULLS LAST, job_id"
++        timestamp_column = "submitted_at" if table_name == "sql_execution_jobs" else "created_at"
++        select_query = "SELECT * " + base_query + f" ORDER BY {timestamp_column} DESC NULLS LAST, job_id"
+         offset = (page - 1) * size
+         select_query += " LIMIT %s OFFSET %s"
+         params.extend([size, offset])
+@@ -98,9 +101,9 @@ def get_paginated_jobs_from_table(table_name: str, page: int = 1, size: int = 20
+         jobs_list = []
+         for job in jobs:
+             job_dict = dict(job)
+-            created = job_dict.get("created_at")
++            created = job_dict.get(timestamp_column)
+             if isinstance(created, datetime.datetime):
+-                job_dict["created_at"] = created.isoformat()
++                job_dict[timestamp_column] = created.isoformat()
+             jobs_list.append(_convert_uuids_to_strings(job_dict))
+ 
+     return {"jobs": jobs_list, "total_pages": total_pages}
+@@ -304,4 +307,62 @@ def update_ddl_job_status(job_id, status, table_name, converted_sql=None, error_
+                 (status, error_message, job_id)
+             )
+         conn.commit()
++        cursor.close()
++
++# --- SQL Execution Jobs --- #
++
++def create_sql_execution_jobs_table():
++    with get_db_connection() as conn:
++        cursor = conn.cursor()
++        cursor.execute("""
++            CREATE TABLE IF NOT EXISTS sql_execution_jobs (
++                job_id UUID PRIMARY KEY,
++                status TEXT NOT NULL,
++                filename TEXT NOT NULL,
++                sanitized_sql TEXT,
++                error_message TEXT,
++                submitted_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
++                processed_at TIMESTAMP WITH TIME ZONE,
++                statement_results JSONB
++            );
++            ALTER TABLE sql_execution_jobs ADD COLUMN IF NOT EXISTS statement_results JSONB;
++        """)
++        conn.commit()
++        cursor.close()
++
++def create_sql_execution_job(filename: str, sanitized_sql: str):
++    with get_db_connection() as conn:
++        cursor = conn.cursor()
++        job_id = uuid.uuid4()
++        cursor.execute(
++            "INSERT INTO sql_execution_jobs (job_id, status, filename, sanitized_sql, statement_results) VALUES (%s, %s, %s, %s, %s)",
++            (job_id, 'pending', filename, sanitized_sql, '[]') # Initialize with empty JSON array
++        )
++        conn.commit()
++        cursor.close()
++        return str(job_id)
++
++def get_sql_execution_job(job_id: str) -> Optional[dict]:
++    with get_db_connection() as conn:
++        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
++        cursor.execute("SELECT * FROM sql_execution_jobs WHERE job_id = %s", (job_id,))
++        job = cursor.fetchone()
++        cursor.close()
++        return job
++
++def update_sql_execution_job_status(job_id: str, status: str, error_message: Optional[str] = None, statement_results: Optional[list] = None):
++    with get_db_connection() as conn:
++        cursor = conn.cursor()
++        processed_at = datetime.datetime.now(datetime.timezone.utc)
++        if statement_results is not None:
++            cursor.execute(
++                "UPDATE sql_execution_jobs SET status = %s, error_message = %s, processed_at = %s, statement_results = %s WHERE job_id = %s",
++                (status, error_message, processed_at, json.dumps(statement_results), job_id)
++            )
++        else:
++            cursor.execute(
++                "UPDATE sql_execution_jobs SET status = %s, error_message = %s, processed_at = %s WHERE job_id = %s",
++                (status, error_message, processed_at, job_id)
++            )
++        conn.commit()
+         cursor.close()
+\ No newline at end of file
+diff --git a/api/logic.py b/api/logic.py
+index a01ca18..7a01166 100644
+--- a/api/logic.py
++++ b/api/logic.py
+@@ -102,7 +102,7 @@ def get_oracle_schemas(details: models.OracleConnectionDetails) -> list[str]:
+     except oracledb.Error as e:
+         raise RuntimeError(f"Error connecting to Oracle or fetching schemas: {e}") from e
+ 
+-def list_oracle_objects(details: models.OracleConnectionDetails, schema: str, object_type: str) -> list[str]:
++def list_oracle_objects(details: models.OracleConnectionDetails, schema_name: str, object_type: str) -> list[str]:
+     """Connects to an Oracle database and lists objects for a given schema and object type.
+ 
+     Args:
+@@ -288,3 +288,44 @@ def test_oracle_ddl_extraction(details: models.OracleConnectionDetails):
+                 raise RuntimeError("DDL extraction test failed. Could not fetch any DDL. Please ensure the user has the necessary permissions (e.g., SELECT ANY DICTIONARY or SELECT_CATALOG_ROLE) and that there are objects in the accessible schemas.")
+     except oracledb.Error as e:
+         raise RuntimeError(f"Error connecting to Oracle or fetching DDL: {e}") from e
++
++
++
++from . import database
++from . import queues
++import pika
++import json
++from . import sanitizer
++
++def process_sql_file(file_content: str, filename: str, pg_creds: dict, rabbitmq_connection) -> str:
++    """Sanitizes SQL, creates a job, and publishes it to RabbitMQ with credentials."""
++    sanitized_sql_statements = sanitizer.sanitize_for_execution(file_content)
++    print(f"[API] Sanitized SQL Statements (first 5): {sanitized_sql_statements[:5]}")
++    sanitized_sql_string = ";\n".join(sanitized_sql_statements)
++    job_id = database.create_sql_execution_job(filename, sanitized_sql_string)
++
++    try:
++        if not rabbitmq_connection or not rabbitmq_connection.is_open:
++            raise RuntimeError("RabbitMQ connection is not available.")
++        
++        channel = rabbitmq_connection.channel()
++        config = queues.QUEUE_CONFIG['SQL_EXECUTION']
++        
++        message_body = {
++            'job_id': job_id,
++            'pg_creds': pg_creds,
++            'sanitized_sql_statements': sanitized_sql_statements # Pass the list of statements
++        }
++
++        channel.basic_publish(
++            exchange='',
++            routing_key=config['queue'],
++            body=json.dumps(message_body),
++            properties=pika.BasicProperties(delivery_mode=2)  # make message persistent
++        )
++        channel.close()
++        return job_id
++    except pika.exceptions.AMQPError as e:
++        # If publishing fails, update the job status to 'failed'
++        database.update_sql_execution_job_status(job_id, 'failed', f"Failed to publish to RabbitMQ: {e}")
++        raise RuntimeError(f"Failed to publish message to RabbitMQ: {e}") from e
+diff --git a/api/main.py b/api/main.py
+index 85681f0..93463b0 100644
+--- a/api/main.py
++++ b/api/main.py
+@@ -24,31 +24,53 @@ from contextlib import asynccontextmanager
+ 
+ from . import queues
+ 
++def get_rabbitmq_connection():
++    try:
++        connection = pika.BlockingConnection(
++            pika.ConnectionParameters(host=os.getenv("RABBITMQ_HOST", "localhost"))
++        )
++        return connection
++    except pika.exceptions.AMQPConnectionError as e:
++        print(f"Failed to connect to RabbitMQ: {e}")
++        return None
++
+ @asynccontextmanager
+ async def lifespan(app: FastAPI):
+     database.initialize_db_pool()
+     database.create_jobs_table()
+     database.create_ddl_jobs_table()
+-    declare_queues()
+-    yield
++    database.create_sql_execution_jobs_table()
++    
++    # Declare queues on startup
++    connection = get_rabbitmq_connection()
++    if connection:
++        declare_queues(connection)
++        connection.close()
+ 
+-def declare_queues():
+-    connection = pika.BlockingConnection(pika.URLParameters(os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2F")))
+-    channel = connection.channel()
+-    for object_type in queues.QUEUE_CONFIG:
+-        config = queues.QUEUE_CONFIG[object_type]
+-        channel.exchange_declare(exchange=config['dlx'], exchange_type='fanout')
+-        channel.queue_declare(queue=config['dlq'], durable=True, arguments={'x-queue-type': 'quorum'})
+-        channel.queue_bind(exchange=config['dlx'], queue=config['dlq'])
+-        channel.queue_declare(
+-            queue=config['queue'],
+-            durable=True,
+-            arguments={
+-                'x-queue-type': 'quorum',
+-                'x-dead-letter-exchange': config['dlx']
+-            }
+-        )
+-    connection.close()
++    yield
++    
++def declare_queues(connection):
++    if not connection:
++        print("Cannot declare queues, no RabbitMQ connection.")
++        return
++    try:
++        channel = connection.channel()
++        for object_type in queues.QUEUE_CONFIG:
++            config = queues.QUEUE_CONFIG[object_type]
++            channel.exchange_declare(exchange=config['dlx'], exchange_type='fanout')
++            channel.queue_declare(queue=config['dlq'], durable=True, arguments={'x-queue-type': 'quorum'})
++            channel.queue_bind(exchange=config['dlx'], queue=config['dlq'])
++            channel.queue_declare(
++                queue=config['queue'],
++                durable=True,
++                arguments={
++                    'x-queue-type': 'quorum',
++                    'x-dead-letter-exchange': config['dlx']
++                }
++            )
++        channel.close()
++    except pika.exceptions.AMQPError as e:
++        print(f"Failed to declare queues: {e}")
+ 
+ app = FastAPI(lifespan=lifespan)
+ 
+@@ -64,8 +86,10 @@ def health_check():
+ @app.post("/convert")
+ async def convert_oracle_to_postgres(conversion_input: models.ConversionInput):
+     job_id = database.create_job(conversion_input.sql, 'spf')
++    connection = get_rabbitmq_connection()
++    if not connection:
++        raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
+     try:
+-        connection = pika.BlockingConnection(pika.URLParameters(os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2F")))
+         channel = connection.channel()
+         channel.queue_declare(queue='conversion_jobs', durable=True, arguments={'x-queue-type': 'quorum', 'x-dead-letter-exchange': 'dlx'})
+         channel.basic_publish(
+@@ -74,9 +98,12 @@ async def convert_oracle_to_postgres(conversion_input: models.ConversionInput):
+             body=json.dumps({'job_id': job_id, 'original_sql': conversion_input.sql, 'job_type': 'spf'}),
+             properties=pika.BasicProperties(delivery_mode=2)
+         )
+-        connection.close()
+-    except pika.exceptions.AMQPConnectionError as e:
+-        raise HTTPException(status_code=500, detail=f"Failed to connect to RabbitMQ: {e}")
++        channel.close()
++    except pika.exceptions.AMQPError as e:
++        raise HTTPException(status_code=500, detail=f"Failed to publish message to RabbitMQ: {e}")
++    finally:
++        if connection and connection.is_open:
++            connection.close()
+     json_content = json.dumps({"job_id": job_id}) + "\n"
+     return Response(content=json_content, media_type="application/json", status_code=202)
+ 
+@@ -85,8 +112,10 @@ async def convert_oracle_to_postgres_file(file: UploadFile = File(...)):
+     content = await file.read()
+     procedures = _split_sql_procedures(content.decode())
+     job_ids = []
++    connection = get_rabbitmq_connection()
++    if not connection:
++        raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
+     try:
+-        connection = pika.BlockingConnection(pika.URLParameters(os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2F")))
+         channel = connection.channel()
+         channel.queue_declare(queue='conversion_jobs', durable=True, arguments={'x-queue-type': 'quorum', 'x-dead-letter-exchange': 'dlx'})
+         for proc in procedures:
+@@ -98,9 +127,12 @@ async def convert_oracle_to_postgres_file(file: UploadFile = File(...)):
+                 body=json.dumps({'job_id': job_id, 'original_sql': proc, 'job_type': 'spf'}),
+                 properties=pika.BasicProperties(delivery_mode=2)
+             )
+-        connection.close()
+-    except pika.exceptions.AMQPConnectionError as e:
+-        raise HTTPException(status_code=500, detail=f"Failed to connect to RabbitMQ: {e}")
++        channel.close()
++    except pika.exceptions.AMQPError as e:
++        raise HTTPException(status_code=500, detail=f"Failed to publish message to RabbitMQ: {e}")
++    finally:
++        if connection and connection.is_open:
++            connection.close()
+     json_content = json.dumps({"job_ids": job_ids}) + "\n"
+     return Response(content=json_content, media_type="application/json", status_code=202)
+ 
+@@ -154,8 +186,10 @@ def aggregate_job_results(aggregate_input: models.AggregateJobsInput, format: st
+ @app.post("/convert-ddl")
+ async def convert_oracle_to_postgres_ddl(conversion_input: models.ConversionInput):
+     job_id = database.create_job(conversion_input.sql, 'ddl')
++    connection = get_rabbitmq_connection()
++    if not connection:
++        raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
+     try:
+-        connection = pika.BlockingConnection(pika.URLParameters(os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2F")))
+         channel = connection.channel()
+         channel.queue_declare(queue='conversion_jobs', durable=True, arguments={'x-queue-type': 'quorum', 'x-dead-letter-exchange': 'dlx'})
+         channel.basic_publish(
+@@ -164,9 +198,12 @@ async def convert_oracle_to_postgres_ddl(conversion_input: models.ConversionInpu
+             body=json.dumps({'job_id': job_id, 'original_sql': conversion_input.sql, 'job_type': 'ddl'}),
+             properties=pika.BasicProperties(delivery_mode=2)
+         )
+-        connection.close()
+-    except pika.exceptions.AMQPConnectionError as e:
+-        raise HTTPException(status_code=500, detail=f"Failed to connect to RabbitMQ: {e}")
++        channel.close()
++    except pika.exceptions.AMQPError as e:
++        raise HTTPException(status_code=500, detail=f"Failed to publish message to RabbitMQ: {e}")
++    finally:
++        if connection and connection.is_open:
++            connection.close()
+     json_content = json.dumps({"job_id": job_id}) + "\n"
+     return Response(content=json_content, media_type="application/json", status_code=202)
+ 
+@@ -175,8 +212,10 @@ async def convert_oracle_to_postgres_ddl_file(file: UploadFile = File(...)):
+     content = await file.read()
+     procedures = _split_sql_procedures(content.decode())
+     job_ids = []
++    connection = get_rabbitmq_connection()
++    if not connection:
++        raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
+     try:
+-        connection = pika.BlockingConnection(pika.URLParameters(os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/%2F")))
+         channel = connection.channel()
+         channel.queue_declare(queue='conversion_jobs', durable=True, arguments={'x-queue-type': 'quorum', 'x-dead-letter-exchange': 'dlx'})
+         for proc in procedures:
+@@ -188,9 +227,12 @@ async def convert_oracle_to_postgres_ddl_file(file: UploadFile = File(...)):
+                 body=json.dumps({'job_id': job_id, 'original_sql': proc, 'job_type': 'ddl'}),
+                 properties=pika.BasicProperties(delivery_mode=2)
+             )
+-        connection.close()
+-    except pika.exceptions.AMQPConnectionError as e:
+-        raise HTTPException(status_code=500, detail=f"Failed to connect to RabbitMQ: {e}")
++        channel.close()
++    except pika.exceptions.AMQPError as e:
++        raise HTTPException(status_code=500, detail=f"Failed to publish message to RabbitMQ: {e}")
++    finally:
++        if connection and connection.is_open:
++            connection.close()
+     json_content = json.dumps({"job_ids": job_ids}) + "\n"
+     return Response(content=json_content, media_type="application/json", status_code=202)
+ 
+@@ -229,7 +271,7 @@ async def test_extraction(details: models.OracleConnectionDetails):
+ @app.post("/list-objects")
+ async def list_objects(request: models.ListObjectsRequest):
+     try:
+-        objects = logic.list_oracle_objects(request.connection_details, request.schema, request.object_type)
++        objects = logic.list_oracle_objects(request.connection_details, request.schema_name, request.object_type)
+         return {"objects": objects}
+     except RuntimeError as e:
+         raise HTTPException(status_code=500, detail=str(e))
+@@ -255,10 +297,10 @@ async def extract_ddl(request: models.ExtractRequest):
+         if parent_job_id:
+             database.update_ddl_job_status(parent_job_id, 'failed', 'ddl_jobs', error_message=str(e))
+         raise HTTPException(status_code=500, detail=str(e))
+-    except pika.exceptions.AMQPConnectionError as e:
++    except pika.exceptions.AMQPError as e:
+         if parent_job_id:
+-            database.update_ddl_job_status(parent_job_id, 'failed', 'ddl_jobs', error_message=f"Failed to connect to RabbitMQ: {e}")
+-        raise HTTPException(status_code=500, detail=f"Failed to connect to RabbitMQ: {e}")
++            database.update_ddl_job_status(parent_job_id, 'failed', 'ddl_jobs', error_message=f"Failed to publish message to RabbitMQ: {e}")
++        raise HTTPException(status_code=500, detail=f"Failed to publish message to RabbitMQ: {e}")
+ 
+ import tempfile
+ 
+@@ -300,4 +342,54 @@ def get_child_job_statuses(parent_job_id: str):
+     if not child_jobs:
+         raise HTTPException(status_code=404, detail="No child jobs found for the given parent ID.")
+     
+-    return {"child_jobs": [database._convert_uuids_to_strings(dict(job)) for job in child_jobs]}
+\ No newline at end of file
++    return {"child_jobs": [database._convert_uuids_to_strings(dict(job)) for job in child_jobs]}
++
++@app.post("/test-postgres-connection")
++async def test_postgres_connection(details: models.PostgresConnectionDetails):
++    try:
++        conn = psycopg2.connect(
++            dbname=details.dbname,
++            user=details.user,
++            password=details.password,
++            host=details.host,
++            port=details.port
++        )
++        conn.close()
++        return JSONResponse(content={"message": "Connection successful!"})
++    except psycopg2.Error as e:
++        raise HTTPException(status_code=400, detail=f"Connection failed: {e}")
++
++from fastapi import Form
++
++@app.post("/execute-sql")
++async def execute_sql_file(file: UploadFile = File(...), pg_creds_json: str = Form(...)):
++    content = await file.read()
++    connection = get_rabbitmq_connection()
++    if not connection:
++        raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
++    try:
++        pg_creds = json.loads(pg_creds_json)
++        job_id = logic.process_sql_file(content.decode(), file.filename, pg_creds, connection)
++        return JSONResponse(status_code=202, content={"job_id": job_id})
++    except (json.JSONDecodeError, RuntimeError) as e:
++        raise HTTPException(status_code=500, detail=str(e))
++    finally:
++        if connection and connection.is_open:
++            connection.close()
++
++@app.get("/sql-execution-job/{job_id}")
++def get_sql_execution_job_status(job_id: str):
++    job = database.get_sql_execution_job(job_id)
++    if not job:
++        raise HTTPException(status_code=404, detail="Job not found")
++    
++    job_dict = database._convert_uuids_to_strings(dict(job))
++    submitted_at = job_dict.get("submitted_at")
++    if isinstance(submitted_at, datetime):
++        job_dict["submitted_at"] = submitted_at.isoformat()
++    
++    processed_at = job_dict.get("processed_at")
++    if isinstance(processed_at, datetime):
++        job_dict["processed_at"] = processed_at.isoformat()
++
++    return JSONResponse(content=job_dict)
+\ No newline at end of file
+diff --git a/api/models.py b/api/models.py
+index 15f7729..2091d44 100644
+--- a/api/models.py
++++ b/api/models.py
+@@ -24,8 +24,24 @@ class ExtractRequest(BaseModel):
+ 
+ class ListObjectsRequest(BaseModel):
+     connection_details: OracleConnectionDetails
+-    schema: str
++    schema_name: str
+     object_type: str
+ 
+ class OracleSchemas(BaseModel):
+     schemas: list[str]
++
++class SqlExecutionJob(BaseModel):
++    job_id: str
++    status: str
++    filename: str
++    error_message: str | None = None
++    submitted_at: str
++    processed_at: str | None = None
++    statement_results: list[dict] | None = None
++
++class PostgresConnectionDetails(BaseModel):
++    host: str
++    port: int
++    user: str
++    password: str
++    dbname: str
+diff --git a/api/queues.py b/api/queues.py
+index d1747f9..e14ddb5 100644
+--- a/api/queues.py
++++ b/api/queues.py
+@@ -7,3 +7,9 @@ QUEUE_CONFIG = {
+     }
+     for object_type in ['TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION', 'INDEX', 'PACKAGE', 'TRIGGER']
+ }
++
++QUEUE_CONFIG['SQL_EXECUTION'] = {
++    'queue': 'sql_execution_jobs',
++    'dlx': 'sql_execution_dlx',
++    'dlq': 'sql_execution_dlq',
++}
+diff --git a/api/sanitizer.py b/api/sanitizer.py
+index 24ec874..9f196dc 100644
+--- a/api/sanitizer.py
++++ b/api/sanitizer.py
+@@ -1,13 +1,48 @@
+ import re
++import sqlparse
+ 
+-def sanitize_sql(sql_content):
++def sanitize_sql(sql_content: str) -> list[str]:
+     """
+-    Sanitizes SQL content by removing comments and normalizing whitespace.
++    Sanitizes SQL content using sqlparse by removing comments and normalizing whitespace.
++    This version allows all SQL statement types (DDL, DML, DQL).
++    Returns a list of individual sanitized SQL statements.
+     """
+-    # Remove single-line comments
+-    sql_content = re.sub(r'--.*', '', sql_content)
+-    # Remove multi-line comments
+-    sql_content = re.sub(r'/\*.*?\*/', '', sql_content, flags=re.DOTALL)
+-    # Normalize whitespace
+-    sql_content = re.sub(r'\s+', ' ', sql_content).strip()
+-    return sql_content
++    # Parse the SQL content
++    statements = sqlparse.parse(sql_content)
++    sanitized_statements = []
++
++    for statement in statements:
++        # Reconstruct the statement without comments and normalized
++        sanitized_statement = sqlparse.format(
++            str(statement),
++            strip_comments=True,
++            reindent=False, # Disable reindentation
++            keyword_case=None # Disable keyword casing
++        ).strip()
++
++        if sanitized_statement:
++            sanitized_statements.append(sanitized_statement)
++
++    return sanitized_statements
++
++def sanitize_for_execution(sql_content: str) -> list[str]:
++    """
++    Sanitizes SQL content specifically for direct execution against PostgreSQL.
++    Uses sqlparse to split and sanitize individual statements.
++    Returns a list of individual sanitized SQL statements ready for execution.
++    """
++    statements = sqlparse.parse(sql_content)
++    sanitized_statements = []
++
++    for statement in statements:
++        sanitized_statement = sqlparse.format(
++            str(statement),
++            strip_comments=True,
++            reindent=False, # Disable reindentation
++            keyword_case=None # Disable keyword casing
++        ).strip()
++
++        if sanitized_statement:
++            sanitized_statements.append(sanitized_statement)
++
++    return sanitized_statements
+\ No newline at end of file
+diff --git a/app.py b/app.py
+index 5424fd7..3f15b01 100644
+--- a/app.py
++++ b/app.py
+@@ -425,7 +425,7 @@ def get_git_info():
+             repo = git.Repo(search_parent_directories=True)
+             branch = repo.active_branch.name
+             commit = repo.head.commit.hexsha[:7]  # Get the short commit hash
+-            git_info = f"Branch: {branch}, Commit: {commit} , Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, Author: 'Arul Khanna Vannala'"
++            git_info = f"Branch: {branch}, Commit: {commit} ,     Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')},     Author: 'Arul Khanna Vannala + AI'"
+             print(git_info)
+             return git_info
+         except git.InvalidGitRepositoryError:
+@@ -473,7 +473,7 @@ with gr.Blocks() as demo:
+                 object_types_radio = gr.Radio(label="Select Object Type", choices=["TABLE", "PROCEDURE", "FUNCTION", "INDEX", "PACKAGE", "VIEW", "TRIGGER"], value="TABLE", visible=False)
+                 list_objects_button = gr.Button("List Objects", visible=False)
+                 objects_checkbox = gr.CheckboxGroup(label="Select Objects", visible=False)
+-                all_objects_state = gr.State([])
++                all_objects_state = gr.Textbox(visible=False, label="All Objects")
+                 select_all_objects_checkbox = gr.Checkbox(label="Select All", visible=False)
+                 extract_button = gr.Button("Generate SQL", visible=False)
+                 test_extraction_button = gr.Button("Test Extraction", visible=False)
+@@ -535,7 +535,7 @@ with gr.Blocks() as demo:
+     with gr.Tab("Data Migration"):
+         print("Initializing Data Migration Tab")
+         gr.Markdown("## Oracle to PostgreSQL Data Migration")
+-        dm_task_id_state = gr.State(None)
++        dm_task_id_state = gr.Textbox(visible=False, label="Task ID")
+         with gr.Row():
+             with gr.Column(scale=1):
+                 gr.Markdown("### Oracle Connection")
+@@ -605,6 +605,127 @@ with gr.Blocks() as demo:
+             ddl_download_button_successful = gr.DownloadButton(label="Download Successful DDL", visible=False)
+             ddl_download_button_failed = gr.DownloadButton(label="Download Failed DDL", visible=False)
+ 
++    with gr.Tab("SQL Executor"):
++        gr.Markdown("## Execute SQL Script on PostgreSQL")
++        gr.Markdown("Upload a .sql file to execute its content against the specified PostgreSQL database. The execution is tracked as a job.")
++        sql_exec_job_id_state = gr.State(value=None)
++        with gr.Row():
++            with gr.Column(scale=1):
++                gr.Markdown("### PostgreSQL Connection")
++                sql_exec_pg_host = gr.Textbox(label="Host", value=os.getenv("POSTGRES_HOST", "localhost"))
++                sql_exec_pg_port = gr.Number(label="Port", value=os.getenv("POSTGRES_PORT", 5432))
++                sql_exec_pg_user = gr.Textbox(label="User", value=os.getenv("POSTGRES_USER", "postgres"))
++                sql_exec_pg_pass = gr.Textbox(label="Password", type="password", value=os.getenv("POSTGRES_PASSWORD", "postgres"))
++                sql_exec_pg_db = gr.Textbox(label="Database", value=os.getenv("POSTGRES_DB", "postgres"))
++                sql_exec_test_button = gr.Button("Test Connection")
++                sql_exec_conn_status = gr.Textbox(label="Connection Status", interactive=False)
++
++            with gr.Column(scale=2):
++                gr.Markdown("### SQL File Upload")
++                sql_exec_file_input = gr.File(label="Upload .sql File")
++                sql_exec_button = gr.Button("Execute SQL", variant="primary")
++                sql_exec_status = gr.Textbox(label="Job Status", interactive=False)
++                sql_exec_details = gr.JSON(label="Job Details", visible=False)
++                sql_exec_statement_results = gr.DataFrame(label="Statement Execution Results", visible=False, headers=["Statement", "Status", "Error"])
++
++        def test_pg_connection(pg_host, pg_port, pg_user, pg_pass, pg_db):
++            pg_creds = {
++                "host": pg_host,
++                "port": int(pg_port),
++                "user": pg_user,
++                "password": pg_pass,
++                "dbname": pg_db
++            }
++            try:
++                response = requests.post(f"{API_URL}/test-postgres-connection", json=pg_creds)
++                response.raise_for_status()
++                return response.json().get("message", "Success!")
++            except requests.exceptions.RequestException as e:
++                error_detail = str(e)
++                try:
++                    error_detail = e.response.json().get("detail", error_detail)
++                except (ValueError, AttributeError):
++                    pass
++                return f"Error: {error_detail}"
++
++        def submit_sql_file(file, pg_host, pg_port, pg_user, pg_pass, pg_db):
++            if file is None:
++                return "Please upload a file.", None, gr.update(visible=False), gr.update(visible=False)
++            
++            pg_creds = {
++                "host": pg_host,
++                "port": int(pg_port),
++                "user": pg_user,
++                "password": pg_pass,
++                "dbname": pg_db
++            }
++
++            try:
++                with open(file.name, 'rb') as f:
++                    files = {'file': (file.name, f, 'application/sql')}
++                    data = {'pg_creds_json': json.dumps(pg_creds)}
++                    response = requests.post(f"{API_URL}/execute-sql", files=files, data=data)
++                
++                response.raise_for_status()
++                job_id = response.json().get("job_id")
++                yield f"Job {job_id} submitted. Polling for status...", job_id, gr.update(visible=False), gr.update(visible=False)
++                yield from poll_sql_job_status(job_id)
++
++            except requests.exceptions.RequestException as e:
++                error_detail = str(e)
++                try:
++                    error_detail = e.response.json().get("detail", error_detail)
++                except (ValueError, AttributeError):
++                    pass
++                yield f"Error: {error_detail}", None, gr.update(visible=True, value={"error": error_detail}), gr.update(visible=False)
++
++        def poll_sql_job_status(job_id):
++            if not job_id:
++                return
++            while True:
++                try:
++                    response = requests.get(f"{API_URL}/sql-execution-job/{job_id}")
++                    response.raise_for_status()
++                    job = response.json()
++                    status = job.get("status")
++                    statement_results = job.get("statement_results", [])
++
++                    df_results = pd.DataFrame(statement_results) if statement_results else pd.DataFrame(columns=["statement", "status", "error"])
++                    
++                    yield f"Job Status: {status}", job_id, gr.update(visible=True, value=job), gr.update(value=df_results, visible=bool(statement_results))
++
++                    if status in ["completed", "failed"]:
++                        break
++                except requests.exceptions.RequestException as e:
++                    yield f"Error polling job status: {e}", job_id, gr.update(visible=True, value={"error": str(e)}), gr.update(visible=False)
++                    break
++                time.sleep(2)
++
++        sql_exec_button.click(
++            submit_sql_file,
++            inputs=[
++                sql_exec_file_input, 
++                sql_exec_pg_host, 
++                sql_exec_pg_port, 
++                sql_exec_pg_user, 
++                sql_exec_pg_pass, 
++                sql_exec_pg_db
++            ],
++            outputs=[sql_exec_status, sql_exec_job_id_state, sql_exec_details, sql_exec_statement_results]
++        )
++
++        sql_exec_test_button.click(
++            test_pg_connection,
++            inputs=[
++                sql_exec_pg_host, 
++                sql_exec_pg_port, 
++                sql_exec_pg_user, 
++                sql_exec_pg_pass, 
++                sql_exec_pg_db
++            ],
++            outputs=sql_exec_conn_status
++        )
++
+     # with gr.Tab("Project Architecture"):
+     #     gr.Markdown(project_explanation)
+ 
+@@ -662,7 +783,7 @@ with gr.Blocks() as demo:
+                 return pd.DataFrame(), f"An unexpected error occurred: {e}", 1
+ 
+         with gr.Row():
+-            job_type_dropdown = gr.Dropdown(label="Select Job Type", choices=get_job_types_from_api(), value="jobs")
++            job_type_dropdown = gr.Dropdown(label="Select Job Type", choices=[], value=None)
+             search_bar = gr.Textbox(label="Search by Job ID or SQL content")
+             status_dropdown = gr.Dropdown(choices=["all", "pending", "verified", "failed"], value="all", label="Filter by Status")
+ 
+@@ -674,14 +795,17 @@ with gr.Blocks() as demo:
+             page_num_input = gr.Number(label="Page", value=1, precision=0)
+             next_button = gr.Button("Next")
+ 
+-        total_pages_state = gr.State(1)
++        total_pages_state = gr.Number(value=1, visible=False, label="Total Pages")
+ 
+         def update_jobs_view(table_name, page_num, search_term, status_filter):
+             df, status, total_pages = get_jobs_data(table_name, page_num, 20, search_term, status_filter)
+             return df, status, total_pages, page_num
+ 
+-        def on_load(table_name):
+-            return update_jobs_view(table_name, 1, "", "all")
++        def on_load():
++            job_types = get_job_types_from_api()
++            table_name = job_types[0] if job_types else None
++            df, status, total_pages, page_num = update_jobs_view(table_name, 1, "", "all")
++            return gr.update(choices=job_types, value=table_name), df, status, total_pages, page_num
+ 
+         def on_search_change(table_name, search_term, status_filter):
+             return update_jobs_view(table_name, 1, search_term, status_filter)
+@@ -703,7 +827,7 @@ with gr.Blocks() as demo:
+             return update_jobs_view(table_name, page_num, search_term, status_filter)
+ 
+         job_type_dropdown.change(on_job_type_change, [job_type_dropdown, search_bar, status_dropdown], [jobs_df, status_text, total_pages_state, page_num_input])
+-        demo.load(on_load, [job_type_dropdown], [jobs_df, status_text, total_pages_state, page_num_input])
++        demo.load(on_load, [], [job_type_dropdown, jobs_df, status_text, total_pages_state, page_num_input])
+         search_bar.submit(on_search_change, [job_type_dropdown, search_bar, status_dropdown], [jobs_df, status_text, total_pages_state, page_num_input])
+         status_dropdown.change(on_status_change, [job_type_dropdown, search_bar, status_dropdown], [jobs_df, status_text, total_pages_state, page_num_input])
+         prev_button.click(on_prev_click, [job_type_dropdown, page_num_input, search_bar, status_dropdown], [jobs_df, status_text, total_pages_state, page_num_input])
+@@ -721,9 +845,9 @@ with gr.Blocks() as demo:
+         gr.Image("assets/logo1.png", scale=1, show_download_button=False, show_fullscreen_button=False, label="Architecture Diagram")
+ 
+ 
+-    with gr.Tab("Mermaid Diagram"):
+-        gr.Markdown("# Mermaid Diagram in Gradio")
+-        render = md.Mermaid(mermaid_code)
++    # with gr.Tab("Mermaid Diagram"):
++    #     gr.Markdown("# Mermaid Diagram in Gradio")
++    #     render = md.Mermaid(mermaid_code)
+ 
+     # Create the Gradio interface to display Git information
+     with gr.Row():("##### Git Information Display")
+@@ -806,4 +930,4 @@ with gr.Blocks() as demo:
+ 
+ 
+ if __name__ == "__main__":
+-    demo.launch(mcp_server=True)
++    demo.launch(debug=True)
+diff --git a/gini.sh b/gini.sh
+index 8222701..dcf455e 100755
+--- a/gini.sh
++++ b/gini.sh
+@@ -17,6 +17,10 @@ rm -rf successful-*
+ rm -rf temp_*
+ # ----------------------
+ 
++## clean up docker containers
++# echo "--- Cleaning up existing Docker containers ---"
++# docker rm -f $(docker ps -a -q) 2>/dev/null || true
++
+ # --- Helper Functions ---
+ 
+ # Check for required commands
+@@ -187,20 +191,20 @@ fi
+ echo "\n--- Starting the application ---"
+ 
+ # Run the API server in the background
+-echo "Starting the API server..."
++echo "Starting the API server... (logs will be in this terminal)"
+ uvicorn api.main:app --reload &
+ api_pid=$!
+ sleep 3
+ 
+ 
+-# Run the worker in the background
+-echo "Starting the worker..."
+-python worker.py &
+-worker_pid=$!
+-sleep 1
+-
+-# Run the Web UI in the foreground
+-echo "Starting the Gradio Web UI..."
++# Instruct user to start worker manually
++echo "-------------------------------------------------------------------"
++echo "IMPORTANT: Please open a NEW TERMINAL and run the worker manually:"
++echo "cd $(pwd) && source .venv/bin/activate && python worker.py"
++echo "-------------------------------------------------------------------"
++sleep 5 # Give user time to read the message
+ 
+ 
++# Run the Web UI in the foreground
++echo "Starting the Gradio Web UI... (logs will be in this terminal)"
+ python app.py
+diff --git a/requirements.txt b/requirements.txt
+index a0aef19..495d813 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -13,4 +13,5 @@ python-dotenv
+ gitpython
+ gradio[mcp]
+ mermaid-py
+-ipython
+\ No newline at end of file
++ipython
++sqlparse
+\ No newline at end of file
+diff --git a/worker.py b/worker.py
+index b38e01f..77405d0 100644
+--- a/worker.py
++++ b/worker.py
+@@ -12,6 +12,8 @@ import psycopg2
+ import oracledb
+ import redis
+ import uuid
++import sqlparse
++from typing import Optional
+ 
+ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+ 
+@@ -50,7 +52,7 @@ def callback(ch, method, properties, body):
+         else:
+             raise ValueError(f"Unknown job type: {job_type}")
+ 
+-        is_valid, error_message = verify_procedure(converted_sql)
++        is_valid, error_message, _ = verify_procedure(converted_sql)
+ 
+         if is_valid:
+             print(f"Job {job_id} verified successfully.")
+@@ -65,7 +67,7 @@ def callback(ch, method, properties, body):
+             else:
+                 raise ValueError(f"Unknown job type: {job_type}")
+             
+-            is_valid, error_message = verify_procedure(corrected_sql)
++            is_valid, error_message, _ = verify_procedure(corrected_sql)
+             if is_valid:
+                 print(f"Job {job_id} auto-corrected and verified successfully.")
+                 update_status_func(job_id, 'verified', corrected_sql)
+@@ -175,10 +177,67 @@ def data_migration_callback(ch, method, properties, body):
+         ch.basic_reject(delivery_tag=method.delivery_tag, requeue=False)
+ 
+ 
++# --- New SQL Execution Feature ---
++
++def sql_execution_callback(ch, method, properties, body):
++    database.initialize_db_pool()
++    data = json.loads(body)
++    job_id = data['job_id']
++    pg_creds = data.get('pg_creds')
++    sanitized_sql_statements = data.get('sanitized_sql_statements')
++    print(f"[Worker] Received SQL Statements (first 5): {sanitized_sql_statements[:5]}")
++
++    MAX_RETRIES = 3
++    retry_count = 0
++    if properties.headers and 'x-death' in properties.headers:
++        for death_entry in properties.headers['x-death']:
++            if death_entry['queue'] == queues.QUEUE_CONFIG['SQL_EXECUTION']['queue']:
++                retry_count = death_entry['count']
++                break
++
++    try:
++        print(f" [x] Received SQL execution job {job_id} (Retry: {retry_count})")
++        job = database.get_sql_execution_job(job_id)
++        if not job:
++            raise ValueError("Job not found in database")
++
++        if retry_count >= MAX_RETRIES:
++            final_error_message = f"SQL execution failed after {MAX_RETRIES} retries. Last error: {job.get('error_message', 'Unknown error')}"
++            print(f" [!] Job {job_id}: Retry limit exceeded. {final_error_message}")
++            database.update_sql_execution_job_status(job_id, 'failed', final_error_message, job.get('statement_results', []))
++            ch.basic_ack(delivery_tag=method.delivery_tag)
++            return
++
++        database.update_sql_execution_job_status(job_id, 'processing')
++        
++        overall_success = True
++        overall_error_message = None
++        statement_results = []
++
++        if pg_creds:
++            overall_success, overall_error_message, statement_results = verify_procedure_with_creds(sanitized_sql_statements, pg_creds)
++        else:
++            overall_success, overall_error_message, statement_results = verify_procedure(sanitized_sql_statements)
++
++        if overall_success:
++            print(f"Job {job_id} executed successfully.")
++            database.update_sql_execution_job_status(job_id, 'completed', None, statement_results)
++            ch.basic_ack(delivery_tag=method.delivery_tag)
++        else:
++            print(f" [!] Job {job_id} failed execution: {overall_error_message}. Re-queueing for retry.")
++            database.update_sql_execution_job_status(job_id, 'failed', overall_error_message, statement_results) # Update with current failure details
++            ch.basic_reject(delivery_tag=method.delivery_tag, requeue=True) # Re-queue for retry
++
++    except Exception as e:
++        print(f" [!] Job {job_id} failed critically: {e}. Re-queueing for retry.")
++        database.update_sql_execution_job_status(job_id, 'failed', str(e), statement_results if 'statement_results' in locals() else [])
++        ch.basic_reject(delivery_tag=method.delivery_tag, requeue=True) # Re-queue for retry
++
++
+ # --- Common and Verification Functions ---
+ 
+ def get_postgres_connection():
+-    """Establishes a connection to the PostgreSQL database."""
++    """Establishes a connection to the PostgreSQL database using environment variables."""
+     return psycopg2.connect(
+         dbname=os.getenv("POSTGRES_DB", "postgres"),
+         user=os.getenv("POSTGRES_USER", "postgres"),
+@@ -187,17 +246,121 @@ def get_postgres_connection():
+         port=os.getenv("POSTGRES_PORT", "5432"),
+     )
+ 
+-def verify_procedure(converted_sql: str):
+-    """Tries to execute a converted SQL procedure against the PostgreSQL database."""
++def verify_procedure(sql_content: str | list[str]) -> tuple[bool, Optional[str], list[dict]]:
++    """Tries to execute SQL content (string or list of statements) against the default PostgreSQL database."""
++    conn = None
++    all_results = []
++    overall_success = True
++    overall_error_message = None
++
++    if isinstance(sql_content, str):
++        statements_to_execute = [str(s).strip() for s in sqlparse.parse(sql_content) if str(s).strip()]
++    else:
++        statements_to_execute = sql_content
++
++    try:
++        print("Connecting to the default database...")
++        conn = get_postgres_connection()
++        print("Connection successful.")
++        with conn.cursor() as cursor:
++            print(f"Found {len(statements_to_execute)} statements to execute.")
++            for i, statement_str in enumerate(statements_to_execute):
++                statement_result = {
++                    'statement': statement_str,
++                    'status': 'pending',
++                    'error': None
++                }
++                if statement_str:
++                    try:
++                        print(f"Executing statement {i+1}: {statement_str[:100]}...")
++                        cursor.execute(statement_str)
++                        statement_result['status'] = 'success'
++                    except psycopg2.Error as e:
++                        print(f"Error executing statement {i+1}: {e}")
++                        statement_result['status'] = 'failed'
++                        statement_result['error'] = str(e)
++                        overall_success = False
++                        if not overall_error_message: # Store the first error as overall error
++                            overall_error_message = str(e)
++                all_results.append(statement_result)
++            
++            if overall_success:
++                print("Committing the transaction...")
++                conn.commit()
++                print("Transaction committed.")
++            else:
++                print("Transaction failed, rolling back...")
++                conn.rollback()
++                print("Transaction rolled back.")
++        return overall_success, overall_error_message, all_results
++    except psycopg2.Error as e:
++        print(f"Error connecting or during transaction: {e}")
++        if conn:
++            conn.rollback()
++            print("Transaction rolled back due to connection/transaction error.")
++        return False, str(e), all_results # Return current results even if connection fails
++    finally:
++        if conn:
++            conn.close()
++            print("Connection closed.")
++
++def verify_procedure_with_creds(sql_content: str | list[str], pg_creds: dict) -> tuple[bool, Optional[str], list[dict]]:
++    """Tries to execute SQL content (string or list of statements) against a user-specified PostgreSQL database."""
++    conn = None
++    all_results = []
++    overall_success = True
++    overall_error_message = None
++
++    if isinstance(sql_content, str):
++        statements_to_execute = [str(s).strip() for s in sqlparse.parse(sql_content) if str(s).strip()]
++    else:
++        statements_to_execute = sql_content
++
+     try:
+-        with get_postgres_connection() as conn:
+-            with conn.cursor() as cursor:
+-                cursor.execute("BEGIN;")
+-                cursor.execute(converted_sql)
+-                cursor.execute("ROLLBACK;")
+-        return True, None
++        print("Connecting to the database...")
++        conn = psycopg2.connect(**pg_creds)
++        print("Connection successful.")
++        with conn.cursor() as cursor:
++            print(f"Found {len(statements_to_execute)} statements to execute.")
++            for i, statement_str in enumerate(statements_to_execute):
++                statement_result = {
++                    'statement': statement_str,
++                    'status': 'pending',
++                    'error': None
++                }
++                if statement_str:
++                    try:
++                        print(f"Executing statement {i+1}: {statement_str[:100]}...")
++                        cursor.execute(statement_str)
++                        statement_result['status'] = 'success'
++                    except psycopg2.Error as e:
++                        print(f"Error executing statement {i+1}: {e}")
++                        statement_result['status'] = 'failed'
++                        statement_result['error'] = str(e)
++                        overall_success = False
++                        if not overall_error_message: # Store the first error as overall error
++                            overall_error_message = str(e)
++                all_results.append(statement_result)
++            
++            if overall_success:
++                print("Committing the transaction...")
++                conn.commit()
++                print("Transaction committed.")
++            else:
++                print("Transaction failed, rolling back...")
++                conn.rollback()
++                print("Transaction rolled back.")
++        return overall_success, overall_error_message, all_results
+     except psycopg2.Error as e:
+-        return False, str(e)
++        print(f"Error connecting or during transaction: {e}")
++        if conn:
++            conn.rollback()
++            print("Transaction rolled back due to connection/transaction error.")
++        return False, str(e), all_results # Return current results even if connection fails
++    finally:
++        if conn:
++            conn.close()
++            print("Connection closed.")
+ 
+ # --- Main Application Setup ---
+ 
+@@ -242,6 +405,24 @@ def main():
+     channel.basic_consume(queue=DATA_MIGRATION_QUEUE, on_message_callback=data_migration_callback)
+     print(f"[*] Listening for messages on '{DATA_MIGRATION_QUEUE}'.")
+ 
++    # Setup for SQL Execution Queue
++    sql_exec_config = queues.QUEUE_CONFIG['SQL_EXECUTION']
++    channel.exchange_declare(exchange=sql_exec_config['dlx'], exchange_type='fanout')
++    channel.queue_declare(queue=sql_exec_config['dlq'], durable=True, arguments={'x-queue-type': 'quorum'})
++    channel.queue_bind(exchange=sql_exec_config['dlx'], queue=sql_exec_config['dlq'])
++    print(f"[*] Dead Letter Queue '{sql_exec_config['dlq']}' is ready.")
++
++    channel.queue_declare(
++        queue=sql_exec_config['queue'],
++        durable=True,
++        arguments={
++            'x-queue-type': 'quorum',
++            'x-dead-letter-exchange': sql_exec_config['dlx']
++        }
++    )
++    channel.basic_consume(queue=sql_exec_config['queue'], on_message_callback=sql_execution_callback)
++    print(f"[*] Listening for messages on '{sql_exec_config['queue']}'.")
++
+     print(' [*] Waiting for messages. To exit press CTRL+C')
+     channel.start_consuming()
+ 

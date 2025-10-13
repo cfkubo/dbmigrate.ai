@@ -1,0 +1,893 @@
+diff --git a/api/logic.py b/api/logic.py
+deleted file mode 100644
+index 7a01166..0000000
+--- a/api/logic.py
++++ /dev/null
+@@ -1,331 +0,0 @@
+-import logging
+-import ollama
+-from api.sanitizer import sanitize_sql
+-import oracledb
+-from . import models
+-
+-logging.basicConfig(level=logging.INFO)
+-
+-def get_running_model_name():
+-    """
+-    Returns the name of the first running Ollama model found.
+-    """
+-    try:
+-        models = ollama.ps()["models"]
+-        if models:
+-            return models[0]["name"]
+-        return None
+-    except Exception as e:
+-        raise RuntimeError(f"Error communicating with Ollama, is it running? Full error: {e}") from e
+-
+-def convert_oracle_to_postgres(oracle_sql: str):
+-    """Converts an Oracle stored procedure to PostgreSQL syntax using Ollama.
+-
+-    Args:
+-        oracle_sql: The Oracle stored procedure to convert.
+-
+-    Returns:
+-        A generator that yields the converted PostgreSQL stored procedure.
+-    """
+-    model_name = get_running_model_name()
+-    if not model_name:
+-        raise RuntimeError("No Ollama model is currently running. Please run a model to start it.")
+-
+-    oracle_sql = sanitize_sql(oracle_sql)
+-
+-    prompt = f"""You are an Oracle SQL and Postgres SQL expert agent. Convert the following Oracle stored procedure to PostgreSQL PL/pgSQL syntax.
+-    Your response should only be the converted code. Do not include any other text, explanations, or apologies. Do not add comments and only send the psql output and error if encounterd
+-
+-    Oracle SQL:
+-    {oracle_sql}
+-
+-    PostgreSQL PL/pgSQL:"""
+-
+-    try:
+-        stream = ollama.generate(model=model_name, prompt=prompt, stream=True)
+-        for chunk in stream:
+-            yield chunk['response']
+-    except Exception as e:
+-        raise RuntimeError(f"Error communicating with Ollama: {e}") from e
+-
+-def convert_oracle_ddl_to_postgres_ddl(oracle_sql: str):
+-    """Converts an Oracle DDL to PostgreSQL syntax using Ollama.
+-
+-    Args:
+-        oracle_sql: The Oracle DDL to convert.
+-
+-    Returns:
+-        A generator that yields the converted PostgreSQL DDL.
+-    """
+-    model_name = get_running_model_name()
+-    if not model_name:
+-        raise RuntimeError("No Ollama model is currently running. Please run a model to start it.")
+-
+-    oracle_sql = sanitize_sql(oracle_sql)
+-
+-    prompt = f"""You are an Oracle SQL and Postgres SQL expert agent. Convert the following Oracle DDL to PostgreSQL DDL syntax.
+-    Your response should only be the converted code. Do not include any other text, explanations, or apologies. Do not add comments and only send the psql output and error if encounterd
+-
+-    Oracle SQL:
+-    {oracle_sql}
+-
+-    PostgreSQL DDL:"""
+-
+-    try:
+-        stream = ollama.generate(model=model_name, prompt=prompt, stream=True)
+-        for chunk in stream:
+-            yield chunk['response']
+-    except Exception as e:
+-        raise RuntimeError(f"Error communicating with Ollama: {e}") from e
+-
+-def get_oracle_schemas(details: models.OracleConnectionDetails) -> list[str]:
+-    """Connects to an Oracle database and returns a list of schemas.
+-
+-    Args:
+-        details: The Oracle connection details.
+-
+-    Returns:
+-        A list of schema names.
+-    """
+-    if details.sid:
+-        dsn = oracledb.makedsn(details.host, details.port, sid=details.sid)
+-    elif details.service_name:
+-        dsn = oracledb.makedsn(details.host, details.port, service_name=details.service_name)
+-    else:
+-        raise RuntimeError("Either a Service Name or SID must be provided.")
+-    try:
+-        with oracledb.connect(user=details.user, password=details.password, dsn=dsn) as connection:
+-            cursor = connection.cursor()
+-            cursor.execute("SELECT username FROM dba_users ORDER BY username")
+-            schemas = [row[0] for row in cursor]
+-            return schemas
+-    except oracledb.Error as e:
+-        raise RuntimeError(f"Error connecting to Oracle or fetching schemas: {e}") from e
+-
+-def list_oracle_objects(details: models.OracleConnectionDetails, schema_name: str, object_type: str) -> list[str]:
+-    """Connects to an Oracle database and lists objects for a given schema and object type.
+-
+-    Args:
+-        details: The Oracle connection details.
+-        schema: The schema to list objects from.
+-        object_type: The type of object to list.
+-
+-    Returns:
+-        A list of object names.
+-    """
+-    if details.sid:
+-        dsn = oracledb.makedsn(details.host, details.port, sid=details.sid)
+-    elif details.service_name:
+-        dsn = oracledb.makedsn(details.host, details.port, service_name=details.service_name)
+-    else:
+-        raise RuntimeError("Either a Service Name or SID must be provided.")
+-
+-    try:
+-        with oracledb.connect(user=details.user, password=details.password, dsn=dsn) as connection:
+-            cursor = connection.cursor()
+-            cursor.execute("""
+-                SELECT object_name
+-                FROM dba_objects
+-                WHERE owner = :schema_name
+-                AND object_type = :obj_type
+-                ORDER BY object_name
+-                """,
+-                schema_name=schema.upper(),
+-                obj_type=object_type.upper()
+-            )
+-            objects = [row[0] for row in cursor]
+-            return objects
+-    except oracledb.Error as e:
+-        raise RuntimeError(f"Error connecting to Oracle or fetching objects: {e}") from e
+-
+-def get_oracle_ddl(details: models.OracleConnectionDetails, schemas: list[str], object_types: list[str], object_names: list[str] | None = None, select_all: bool = False):
+-    """Connects to an Oracle database and extracts DDLs for specified schemas and object types.
+-
+-    Args:
+-        details: The Oracle connection details.
+-        schemas: A list of schemas to extract DDLs from.
+-        object_types: A list of object types to extract.
+-        object_names: An optional list of object names to extract.
+-
+-    Returns:
+-        A dictionary containing the DDLs.
+-    """
+-    logging.info(f"Starting DDL extraction for schemas: {schemas}, object types: {object_types}")
+-    if details.sid:
+-        dsn = oracledb.makedsn(details.host, details.port, sid=details.sid)
+-    elif details.service_name:
+-        dsn = oracledb.makedsn(details.host, details.port, service_name=details.service_name)
+-    else:
+-        raise RuntimeError("Either a Service Name or SID must be provided.")
+-
+-    ddls = {obj_type: {} for obj_type in ['TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION', 'INDEX', 'PACKAGE', 'TRIGGER']}
+-    ddls["db_name"] = ""
+-    try:
+-        with oracledb.connect(user=details.user, password=details.password, dsn=dsn) as connection:
+-            logging.info(f"Successfully connected to Oracle database")
+-            cursor = connection.cursor()
+-            
+-            # Configure DBMS_METADATA for cleaner DDL output
+-            cursor.execute("""
+-                BEGIN
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'STORAGE', FALSE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'SEGMENT_ATTRIBUTES', FALSE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'SQLTERMINATOR', TRUE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'PRETTY', TRUE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'CONSTRAINTS_AS_ALTER', FALSE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'REF_CONSTRAINTS', TRUE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'EMIT_SCHEMA', FALSE);
+-                END;
+-            """)
+-
+-            if not ddls["db_name"]:
+-                cursor.execute("SELECT ORA_DATABASE_NAME FROM DUAL")
+-                db_name = cursor.fetchone()[0]
+-                ddls["db_name"] = db_name
+-                logging.info(f"Database name: {db_name}")
+-
+-            for schema in schemas:
+-                logging.info(f"Processing schema: {schema}")
+-                for obj_type in object_types:
+-                    logging.info(f"Processing object type: {obj_type} for schema: {schema}")
+-                    
+-                    objects_to_fetch = []
+-                    if not object_names or select_all:
+-                        cursor.execute("""
+-                            SELECT object_name
+-                            FROM dba_objects
+-                            WHERE owner = :schema_name
+-                            AND object_type = :obj_type
+-                            ORDER BY object_name
+-                            """,
+-                            schema_name=schema.upper(),
+-                            obj_type=obj_type.upper()
+-                        )
+-                        objects_to_fetch = [row[0] for row in cursor]
+-                    else:
+-                        objects_to_fetch = object_names
+-                    
+-                    logging.info(f"Found {len(objects_to_fetch)} objects to fetch for {obj_type}.")
+-
+-                    for obj_name in objects_to_fetch:
+-                        try:
+-                            cursor.execute(
+-                                "SELECT DBMS_METADATA.GET_DDL(:obj_type, :obj_name, :schema_name) FROM DUAL",
+-                                obj_type=obj_type.upper(),
+-                                obj_name=obj_name,
+-                                schema_name=schema.upper()
+-                            )
+-                            ddl_clob = cursor.fetchone()
+-                            if ddl_clob and ddl_clob[0]:
+-                                ddl = ddl_clob[0].read()
+-                                key = f"{schema}.{obj_name}"
+-                                ddls[obj_type][key] = ddl
+-                            else:
+-                                logging.warning(f"No DDL found for {obj_type} '{obj_name}'.")
+-                        except oracledb.Error as e:
+-                            error_obj, = e.args
+-                            logging.error(f"Error fetching DDL for {obj_type} '{obj_name}': {error_obj.message}")
+-        return ddls
+-    except oracledb.Error as e:
+-        logging.error(f"Error connecting to Oracle or fetching DDL: {e}")
+-        raise RuntimeError(f"Error connecting to Oracle or fetching DDL: {e}") from e
+-
+-def test_oracle_ddl_extraction(details: models.OracleConnectionDetails):
+-    """
+-    Tests the connection and DDL extraction from an Oracle database.
+-
+-    Args:
+-        details: The Oracle connection details.
+-
+-    Returns:
+-        A success message if the extraction is successful, otherwise raises a RuntimeError.
+-    """
+-    if details.sid:
+-        dsn = oracledb.makedsn(details.host, details.port, sid=details.sid)
+-    elif details.service_name:
+-        dsn = oracledb.makedsn(details.host, details.port, service_name=details.service_name)
+-    else:
+-        raise RuntimeError("Either a Service Name or SID must be provided.")
+-
+-    try:
+-        with oracledb.connect(user=details.user, password=details.password, dsn=dsn) as connection:
+-            cursor = connection.cursor()
+-
+-            # Configure DBMS_METADATA for cleaner DDL output
+-            cursor.execute("""
+-                BEGIN
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'STORAGE', FALSE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'SEGMENT_ATTRIBUTES', FALSE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'SQLTERMINATOR', TRUE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'PRETTY', TRUE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'CONSTRAINTS_AS_ALTER', FALSE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'REF_CONSTRAINTS', TRUE);
+-                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'EMIT_SCHEMA', FALSE);
+-                END;
+-            """)
+-
+-            # Try to fetch the DDL for a single, common object to test permissions
+-            cursor.execute("""
+-                SELECT object_name, owner
+-                FROM dba_objects
+-                WHERE object_type = 'TABLE' AND ROWNUM = 1
+-            """)
+-            result = cursor.fetchone()
+-            if not result:
+-                raise RuntimeError("DDL extraction test failed. No tables found in accessible schemas.")
+-
+-            object_name, owner = result
+-            cursor.execute(
+-                "SELECT DBMS_METADATA.GET_DDL('TABLE', :object_name, :owner) FROM DUAL",
+-                object_name=object_name,
+-                owner=owner
+-            )
+-            ddl_clob = cursor.fetchone()[0]
+-            
+-            if ddl_clob and ddl_clob.read():
+-                return "DDL extraction test successful. Permissions appear to be correct."
+-            else:
+-                raise RuntimeError("DDL extraction test failed. Could not fetch any DDL. Please ensure the user has the necessary permissions (e.g., SELECT ANY DICTIONARY or SELECT_CATALOG_ROLE) and that there are objects in the accessible schemas.")
+-    except oracledb.Error as e:
+-        raise RuntimeError(f"Error connecting to Oracle or fetching DDL: {e}") from e
+-
+-
+-
+-from . import database
+-from . import queues
+-import pika
+-import json
+-from . import sanitizer
+-
+-def process_sql_file(file_content: str, filename: str, pg_creds: dict, rabbitmq_connection) -> str:
+-    """Sanitizes SQL, creates a job, and publishes it to RabbitMQ with credentials."""
+-    sanitized_sql_statements = sanitizer.sanitize_for_execution(file_content)
+-    print(f"[API] Sanitized SQL Statements (first 5): {sanitized_sql_statements[:5]}")
+-    sanitized_sql_string = ";\n".join(sanitized_sql_statements)
+-    job_id = database.create_sql_execution_job(filename, sanitized_sql_string)
+-
+-    try:
+-        if not rabbitmq_connection or not rabbitmq_connection.is_open:
+-            raise RuntimeError("RabbitMQ connection is not available.")
+-        
+-        channel = rabbitmq_connection.channel()
+-        config = queues.QUEUE_CONFIG['SQL_EXECUTION']
+-        
+-        message_body = {
+-            'job_id': job_id,
+-            'pg_creds': pg_creds,
+-            'sanitized_sql_statements': sanitized_sql_statements # Pass the list of statements
+-        }
+-
+-        channel.basic_publish(
+-            exchange='',
+-            routing_key=config['queue'],
+-            body=json.dumps(message_body),
+-            properties=pika.BasicProperties(delivery_mode=2)  # make message persistent
+-        )
+-        channel.close()
+-        return job_id
+-    except pika.exceptions.AMQPError as e:
+-        # If publishing fails, update the job status to 'failed'
+-        database.update_sql_execution_job_status(job_id, 'failed', f"Failed to publish to RabbitMQ: {e}")
+-        raise RuntimeError(f"Failed to publish message to RabbitMQ: {e}") from e
+diff --git a/api/main.py b/api/main.py
+index 93463b0..63e138e 100644
+--- a/api/main.py
++++ b/api/main.py
+@@ -11,182 +11,36 @@ from . import logic
+ from . import models
+ from . import database
+ import io
+-import re
+ import json
+ import os
+ import pika
+ import uuid
+ from typing import Optional
+ 
+-app = FastAPI()
+-
+-from contextlib import asynccontextmanager
+-
+-from . import queues
+-
+-def get_rabbitmq_connection():
+-    try:
+-        connection = pika.BlockingConnection(
+-            pika.ConnectionParameters(host=os.getenv("RABBITMQ_HOST", "localhost"))
+-        )
+-        return connection
+-    except pika.exceptions.AMQPConnectionError as e:
+-        print(f"Failed to connect to RabbitMQ: {e}")
+-        return None
+-
+-@asynccontextmanager
+-async def lifespan(app: FastAPI):
+-    database.initialize_db_pool()
+-    database.create_jobs_table()
+-    database.create_ddl_jobs_table()
+-    database.create_sql_execution_jobs_table()
+-    
+-    # Declare queues on startup
+-    connection = get_rabbitmq_connection()
+-    if connection:
+-        declare_queues(connection)
+-        connection.close()
+-
+-    yield
+-    
+-def declare_queues(connection):
+-    if not connection:
+-        print("Cannot declare queues, no RabbitMQ connection.")
+-        return
+-    try:
+-        channel = connection.channel()
+-        for object_type in queues.QUEUE_CONFIG:
+-            config = queues.QUEUE_CONFIG[object_type]
+-            channel.exchange_declare(exchange=config['dlx'], exchange_type='fanout')
+-            channel.queue_declare(queue=config['dlq'], durable=True, arguments={'x-queue-type': 'quorum'})
+-            channel.queue_bind(exchange=config['dlx'], queue=config['dlq'])
+-            channel.queue_declare(
+-                queue=config['queue'],
+-                durable=True,
+-                arguments={
+-                    'x-queue-type': 'quorum',
+-                    'x-dead-letter-exchange': config['dlx']
+-                }
+-            )
+-        channel.close()
+-    except pika.exceptions.AMQPError as e:
+-        print(f"Failed to declare queues: {e}")
++from fastapi import FastAPI, Response, File, UploadFile, HTTPException
++import json
++from . import models
++from . import database
++from .routes import conversion_routes, job_routes, oracle_routes, execution_routes, migration_routes
++from .startup import lifespan
+ 
+ app = FastAPI(lifespan=lifespan)
+ 
+-def _split_sql_procedures(content: str) -> list[str]:
+-    procedures = re.split(r'\n/\s*\n', content)
+-    return [proc.strip() for proc in procedures if proc.strip()]
++app.include_router(conversion_routes.router)
++app.include_router(job_routes.router)
++app.include_router(oracle_routes.router)
++app.include_router(execution_routes.router)
++app.include_router(migration_routes.router)
+ 
+ @app.get("/health")
+ def health_check():
+     json_content = json.dumps({"status": "ok"}) + "\n"
+     return Response(content=json_content, media_type="application/json")
+ 
+-@app.post("/convert")
+-async def convert_oracle_to_postgres(conversion_input: models.ConversionInput):
+-    job_id = database.create_job(conversion_input.sql, 'spf')
+-    connection = get_rabbitmq_connection()
+-    if not connection:
+-        raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
+-    try:
+-        channel = connection.channel()
+-        channel.queue_declare(queue='conversion_jobs', durable=True, arguments={'x-queue-type': 'quorum', 'x-dead-letter-exchange': 'dlx'})
+-        channel.basic_publish(
+-            exchange='',
+-            routing_key='conversion_jobs',
+-            body=json.dumps({'job_id': job_id, 'original_sql': conversion_input.sql, 'job_type': 'spf'}),
+-            properties=pika.BasicProperties(delivery_mode=2)
+-        )
+-        channel.close()
+-    except pika.exceptions.AMQPError as e:
+-        raise HTTPException(status_code=500, detail=f"Failed to publish message to RabbitMQ: {e}")
+-    finally:
+-        if connection and connection.is_open:
+-            connection.close()
+-    json_content = json.dumps({"job_id": job_id}) + "\n"
+-    return Response(content=json_content, media_type="application/json", status_code=202)
+-
+-@app.post("/convert-file")
+-async def convert_oracle_to_postgres_file(file: UploadFile = File(...)):
+-    content = await file.read()
+-    procedures = _split_sql_procedures(content.decode())
+-    job_ids = []
+-    connection = get_rabbitmq_connection()
+-    if not connection:
+-        raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
+-    try:
+-        channel = connection.channel()
+-        channel.queue_declare(queue='conversion_jobs', durable=True, arguments={'x-queue-type': 'quorum', 'x-dead-letter-exchange': 'dlx'})
+-        for proc in procedures:
+-            job_id = database.create_job(proc, 'spf')
+-            job_ids.append(job_id)
+-            channel.basic_publish(
+-                exchange='',
+-                routing_key='conversion_jobs',
+-                body=json.dumps({'job_id': job_id, 'original_sql': proc, 'job_type': 'spf'}),
+-                properties=pika.BasicProperties(delivery_mode=2)
+-            )
+-        channel.close()
+-    except pika.exceptions.AMQPError as e:
+-        raise HTTPException(status_code=500, detail=f"Failed to publish message to RabbitMQ: {e}")
+-    finally:
+-        if connection and connection.is_open:
+-            connection.close()
+-    json_content = json.dumps({"job_ids": job_ids}) + "\n"
+-    return Response(content=json_content, media_type="application/json", status_code=202)
+-
+-@app.get("/job/{job_id}")
+-def get_job_status(job_id: str):
+-    job = database.get_job(job_id)
+-    if not job:
+-        raise HTTPException(status_code=404, detail="Job not found")
+-    
+-    job_dict = database._convert_uuids_to_strings(dict(job))
+-    created = job_dict.get("created_at")
+-    if isinstance(created, datetime):
+-        job_dict["created_at"] = created.isoformat()
+-
+-    json_content = json.dumps(job_dict, default=str) + "\n"
+-    return Response(content=json_content, media_type="application/json")
+-
+-@app.post("/jobs/aggregate")
+-def aggregate_job_results(aggregate_input: models.AggregateJobsInput, format: str = Query("json", enum=["json", "sql"])):
+-    jobs = database.get_jobs_by_ids(aggregate_input.job_ids)
+-    if not jobs:
+-        raise HTTPException(status_code=404, detail="No jobs found for the given IDs")
+-
+-    pending_jobs = [str(job['job_id']) for job in jobs if job['status'] == 'pending']
+-    if pending_jobs:
+-        return JSONResponse(status_code=202, content={"status": "processing", "pending_jobs": pending_jobs, "total_jobs": len(aggregate_input.job_ids)})
+-
+-    successful_sql = []
+-    failed_sql = []
+-    for row in jobs:
+-        job = database._convert_uuids_to_strings(dict(row))
+-        status = job.get('status')
+-        if status in ('success', 'verified'):
+-            successful_sql.append(job.get('converted_sql') or "")
+-        elif status == 'failed':
+-            error_comment = f"-- Job failed: {job.get('job_id')}\n-- Error: {job.get('error_message')}\n"
+-            failed_sql.append(error_comment + (job.get('original_sql') or ""))
+-
+-    if format == "sql":
+-        all_sql = []
+-        if successful_sql:
+-            all_sql.append("-- Successful Conversions --")
+-            all_sql.extend(successful_sql)
+-        if failed_sql:
+-            all_sql.append("-- Failed Conversions --")
+-            all_sql.extend(failed_sql)
+-        return Response(content="\n/\n".join(all_sql), media_type="application/sql")
+-    else:
+-        return JSONResponse(content={"status": "completed", "successful_sql": "\n/\n".join(successful_sql), "failed_sql": "\n/\n".join(failed_sql)})
+-
+ @app.post("/convert-ddl")
+ async def convert_oracle_to_postgres_ddl(conversion_input: models.ConversionInput):
+     job_id = database.create_job(conversion_input.sql, 'ddl')
+-    connection = get_rabbitmq_connection()
++    connection = database.get_rabbitmq_connection()
+     if not connection:
+         raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
+     try:
+@@ -212,7 +66,7 @@ async def convert_oracle_to_postgres_ddl_file(file: UploadFile = File(...)):
+     content = await file.read()
+     procedures = _split_sql_procedures(content.decode())
+     job_ids = []
+-    connection = get_rabbitmq_connection()
++    connection = database.get_rabbitmq_connection()
+     if not connection:
+         raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
+     try:
+@@ -234,162 +88,4 @@ async def convert_oracle_to_postgres_ddl_file(file: UploadFile = File(...)):
+         if connection and connection.is_open:
+             connection.close()
+     json_content = json.dumps({"job_ids": job_ids}) + "\n"
+-    return Response(content=json_content, media_type="application/json", status_code=202)
+-
+-@app.get("/jobs/types")
+-def get_job_types():
+-    return database.get_job_table_names()
+-
+-@app.get("/jobs/{table_name}")
+-def get_jobs_by_table(
+-    table_name: str,
+-    page: int = 1,
+-    size: int = 20,
+-    search: Optional[str] = None,
+-    status: Optional[str] = None,
+-) -> dict:
+-    if table_name not in database.get_job_table_names():
+-        raise HTTPException(status_code=404, detail="Job table not found")
+-    return database.get_paginated_jobs_from_table(table_name, page, size, search, status)
+-
+-@app.post("/connect")
+-async def connect_to_oracle(details: models.OracleConnectionDetails):
+-    try:
+-        schemas = logic.get_oracle_schemas(details)
+-        return {"schemas": schemas}
+-    except RuntimeError as e:
+-        raise HTTPException(status_code=500, detail=str(e))
+-
+-@app.post("/test-extraction")
+-async def test_extraction(details: models.OracleConnectionDetails):
+-    try:
+-        message = logic.test_oracle_ddl_extraction(details)
+-        return {"message": message}
+-    except RuntimeError as e:
+-        raise HTTPException(status_code=500, detail=str(e))
+-
+-@app.post("/list-objects")
+-async def list_objects(request: models.ListObjectsRequest):
+-    try:
+-        objects = logic.list_oracle_objects(request.connection_details, request.schema_name, request.object_type)
+-        return {"objects": objects}
+-    except RuntimeError as e:
+-        raise HTTPException(status_code=500, detail=str(e))
+-
+-@app.post("/extract")
+-async def extract_ddl(request: models.ExtractRequest):
+-    parent_job_id = None
+-    try:
+-        parent_job_id = database.create_ddl_parent_job()
+-        ddls = logic.get_oracle_ddl(request.connection_details, request.schemas, request.object_types, request.object_names, request.select_all)
+-
+-        for obj_type, objects in ddls.items():
+-            if obj_type == "db_name":
+-                continue
+-
+-            table_name = f"{obj_type.lower()}_extraction_jobs"
+-
+-            for obj_name, ddl in objects.items():
+-                database.create_ddl_child_job(parent_job_id, ddl, table_name)
+-
+-        return {"parent_job_id": parent_job_id}
+-    except RuntimeError as e:
+-        if parent_job_id:
+-            database.update_ddl_job_status(parent_job_id, 'failed', 'ddl_jobs', error_message=str(e))
+-        raise HTTPException(status_code=500, detail=str(e))
+-    except pika.exceptions.AMQPError as e:
+-        if parent_job_id:
+-            database.update_ddl_job_status(parent_job_id, 'failed', 'ddl_jobs', error_message=f"Failed to publish message to RabbitMQ: {e}")
+-        raise HTTPException(status_code=500, detail=f"Failed to publish message to RabbitMQ: {e}")
+-
+-import tempfile
+-
+-@app.get("/job/{job_id}/result")
+-def get_job_result(job_id: str):
+-    child_jobs = database.get_ddl_child_jobs(job_id)
+-    
+-    if not child_jobs:
+-        raise HTTPException(status_code=404, detail="Job not found or no child jobs created.")
+-
+-    pending_jobs = [job for job in child_jobs if job['status'] == 'pending']
+-    if pending_jobs:
+-        return {"status": "processing", "pending_jobs": len(pending_jobs), "total_jobs": len(child_jobs)}
+-
+-    successful_sql = []
+-    failed_jobs = []
+-    for job in child_jobs:
+-        if job['status'] in ('success', 'verified'):
+-            successful_sql.append(job.get('converted_sql') or "")
+-        elif job['status'] == 'failed':
+-            failed_jobs.append(job)
+-
+-    if not successful_sql:
+-        return {"status": "failed", "failed_jobs": failed_jobs}
+-
+-    aggregated_sql = "\n/\n".join(successful_sql)
+-    
+-    now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+-    filename = f"converted-ddl-{now}.sql"
+-    filepath = os.path.join(tempfile.gettempdir(), filename)
+-    with open(filepath, "w") as f:
+-        f.write(aggregated_sql)
+-
+-    return FileResponse(filepath, media_type="application/sql", filename=filename)
+-
+-@app.get("/job/{parent_job_id}/children")
+-def get_child_job_statuses(parent_job_id: str):
+-    child_jobs = database.get_ddl_child_jobs(parent_job_id)
+-    if not child_jobs:
+-        raise HTTPException(status_code=404, detail="No child jobs found for the given parent ID.")
+-    
+-    return {"child_jobs": [database._convert_uuids_to_strings(dict(job)) for job in child_jobs]}
+-
+-@app.post("/test-postgres-connection")
+-async def test_postgres_connection(details: models.PostgresConnectionDetails):
+-    try:
+-        conn = psycopg2.connect(
+-            dbname=details.dbname,
+-            user=details.user,
+-            password=details.password,
+-            host=details.host,
+-            port=details.port
+-        )
+-        conn.close()
+-        return JSONResponse(content={"message": "Connection successful!"})
+-    except psycopg2.Error as e:
+-        raise HTTPException(status_code=400, detail=f"Connection failed: {e}")
+-
+-from fastapi import Form
+-
+-@app.post("/execute-sql")
+-async def execute_sql_file(file: UploadFile = File(...), pg_creds_json: str = Form(...)):
+-    content = await file.read()
+-    connection = get_rabbitmq_connection()
+-    if not connection:
+-        raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
+-    try:
+-        pg_creds = json.loads(pg_creds_json)
+-        job_id = logic.process_sql_file(content.decode(), file.filename, pg_creds, connection)
+-        return JSONResponse(status_code=202, content={"job_id": job_id})
+-    except (json.JSONDecodeError, RuntimeError) as e:
+-        raise HTTPException(status_code=500, detail=str(e))
+-    finally:
+-        if connection and connection.is_open:
+-            connection.close()
+-
+-@app.get("/sql-execution-job/{job_id}")
+-def get_sql_execution_job_status(job_id: str):
+-    job = database.get_sql_execution_job(job_id)
+-    if not job:
+-        raise HTTPException(status_code=404, detail="Job not found")
+-    
+-    job_dict = database._convert_uuids_to_strings(dict(job))
+-    submitted_at = job_dict.get("submitted_at")
+-    if isinstance(submitted_at, datetime):
+-        job_dict["submitted_at"] = submitted_at.isoformat()
+-    
+-    processed_at = job_dict.get("processed_at")
+-    if isinstance(processed_at, datetime):
+-        job_dict["processed_at"] = processed_at.isoformat()
+-
+-    return JSONResponse(content=job_dict)
+\ No newline at end of file
++    return Response(content=json_content, media_type="application/json", status_code=202)
+\ No newline at end of file
+diff --git a/api/models.py b/api/models.py
+index 2091d44..0a9e908 100644
+--- a/api/models.py
++++ b/api/models.py
+@@ -15,6 +15,27 @@ class OracleConnectionDetails(BaseModel):
+     service_name: str | None = None
+     sid: str | None = None
+ 
++class PostgresConnectionDetails(BaseModel):
++    host: str
++    port: int
++    user: str
++    password: str
++    dbname: str
++
++class MigrationCredentials(BaseModel):
++    oracle: OracleConnectionDetails
++    postgres: PostgresConnectionDetails
++
++class MigrationTableMapping(BaseModel):
++    source: str
++    destination: str
++
++class DataMigrationRequest(BaseModel):
++    oracle_credentials: OracleConnectionDetails
++    postgres_credentials: PostgresConnectionDetails
++    source_table: str
++    destination_table: str
++
+ class ExtractRequest(BaseModel):
+     connection_details: OracleConnectionDetails
+     schemas: list[str]
+@@ -38,10 +59,3 @@ class SqlExecutionJob(BaseModel):
+     submitted_at: str
+     processed_at: str | None = None
+     statement_results: list[dict] | None = None
+-
+-class PostgresConnectionDetails(BaseModel):
+-    host: str
+-    port: int
+-    user: str
+-    password: str
+-    dbname: str
+diff --git a/app.py b/app.py
+index 3f15b01..6f6adc1 100644
+--- a/app.py
++++ b/app.py
+@@ -7,23 +7,13 @@ import requests
+ import time
+ from datetime import datetime
+ import os
+-import pika
+-import redis
+-import json
+-import uuid
+-import oracledb
+-import psycopg2
+ import pandas as pd
+ import git
+ import tempfile
+ import mermaid as md
++from ui import api_client
+ 
+ API_URL = "http://127.0.0.1:8000"
+-# git_info = "" # Global variable to hold git info
+-
+-# --- New Data Migration Functions ---
+-
+-
+ 
+ mermaid_code = """
+ graph TD
+@@ -32,26 +22,24 @@ graph TD
+     C --> D[End]
+ """
+ 
+-def dm_get_redis_connection():
+-    return redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=int(os.getenv("REDIS_PORT", 6379)), db=0, decode_responses=True)
+-
+ def dm_connect_and_get_tables(db_type, user, password, host, port, db_name_or_service):
++    # This function can also be moved to the backend in the future
+     tables = []
+     try:
+         if db_type == "Oracle":
++            import oracledb
+             dsn = oracledb.makedsn(host, port, service_name=db_name_or_service)
+             conn = oracledb.connect(user=user, password=password, dsn=dsn)
+             cursor = conn.cursor()
+-            # Query to get user tables
+             cursor.execute("SELECT table_name FROM user_tables ORDER BY table_name")
+             tables = [row[0] for row in cursor.fetchall()]
+             cursor.close()
+             conn.close()
+             return gr.update(choices=tables, value=None, interactive=True), gr.update(value=f"Connected to Oracle. Found {len(tables)} tables.", visible=True)
+         elif db_type == "PostgreSQL":
++            import psycopg2
+             conn = psycopg2.connect(dbname=db_name_or_service, user=user, password=password, host=host, port=port)
+             cursor = conn.cursor()
+-            # Query to get user tables in the public schema
+             cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
+             tables = [row[0] for row in cursor.fetchall()]
+             cursor.close()
+@@ -63,35 +51,11 @@ def dm_connect_and_get_tables(db_type, user, password, host, port, db_name_or_se
+ def dm_start_migration(ora_user, ora_pass, ora_host, ora_port, ora_service, pg_user, pg_pass, pg_host, pg_port, pg_db, ora_table, pg_table):
+     ora_creds = {'user': ora_user, 'password': ora_pass, 'host': ora_host, 'port': ora_port, 'service_name': ora_service}
+     pg_creds = {'user': pg_user, 'password': pg_pass, 'host': pg_host, 'port': pg_port, 'dbname': pg_db}
+-    if not all([ora_creds['user'], ora_creds['password'], ora_creds['host'], ora_creds['port'], ora_creds['service_name'], pg_creds['user'], pg_creds['password'], pg_creds['host'], pg_creds['port'], pg_creds['dbname'], ora_table, pg_table]):
++    if not all(ora_creds.values()) or not all(pg_creds.values()) or not ora_table or not pg_table:
+         return "Error: All fields are required.", None
+ 
+-    task_id = str(uuid.uuid4())
+-    task_info = {
+-        "task_id": task_id,
+-        "oracle_credentials": ora_creds,
+-        "postgres_credentials": pg_creds,
+-        "source_table": ora_table,
+-        "destination_table": pg_table
+-    }
+-
+     try:
+-        connection = pika.BlockingConnection(pika.ConnectionParameters(host=os.getenv('RABBITMQ_HOST', 'localhost')))
+-        channel = connection.channel()
+-        channel.queue_declare(queue='data_migration_jobs', durable=True, arguments={'x-queue-type': 'quorum'})
+-        channel.basic_publish(
+-            exchange='',
+-            routing_key='data_migration_jobs',
+-            body=json.dumps(task_info),
+-            properties=pika.BasicProperties(delivery_mode=2) # make message persistent
+-        )
+-        connection.close()
+-
+-        # Set initial status in Redis
+-        redis_conn = dm_get_redis_connection()
+-        initial_status = {"status": "submitted", "message": "Task has been submitted to the queue."}
+-        redis_conn.set(f"migration_status:{task_id}", json.dumps(initial_status), ex=3600) # 1-hour expiry
+-
++        task_id = api_client.start_migration(ora_creds, pg_creds, ora_table, pg_table)
+         return f"Migration task {task_id} submitted.", task_id
+     except Exception as e:
+         return f"Error submitting task: {e}", None
+@@ -100,19 +64,15 @@ def dm_check_status(task_id):
+     if not task_id:
+         return "", 0.0
+     try:
+-        redis_conn = dm_get_redis_connection()
+-        status_json = redis_conn.get(f"migration_status:{task_id}")
+-        if status_json:
+-            status_data = json.loads(status_json)
+-            status = status_data.get('status', 'unknown')
+-            message = status_data.get('message', '')
+-            progress = status_data.get('progress', None)
+-
+-            if progress:
+-                return f"Status: {status} - {message}", float(progress.strip('%'))/100
+-            else:
+-                return f"Status: {status} - {message}", 0.0
+-        return "Status: pending", 0.0
++        status_data = api_client.check_migration_status(task_id)
++        status = status_data.get('status', 'unknown')
++        message = status_data.get('message', '')
++        progress = status_data.get('progress', None)
++
++        if progress:
++            return f"Status: {status} - {message}", float(progress.strip('%'))/100
++        else:
++            return f"Status: {status} - {message}", 0.0
+     except Exception as e:
+         return f"Error checking status: {e}", 0.0
+ 
+diff --git a/testscript/setup_test_db.py b/testscript/setup_test_db.py
+index ba46afc..83ec586 100644
+--- a/testscript/setup_test_db.py
++++ b/testscript/setup_test_db.py
+@@ -68,7 +68,7 @@ def verify_setup():
+     }
+     payload = {
+         "connection_details": connection_details,
+-        "schema": NEW_USER.upper(),
++        "schema_name": NEW_USER.upper(),
+         "object_type": "TABLE",
+     }
+     try:

@@ -1,0 +1,518 @@
+diff --git a/api/database.py b/api/database.py
+index dc7d685..47def47 100644
+--- a/api/database.py
++++ b/api/database.py
+@@ -185,6 +185,45 @@ def get_jobs_by_ids(job_ids: list[str]) -> list[dict]:
+         cursor.close()
+         return jobs
+ 
++def get_postgres_schemas() -> list[str]:
++    """Connects to a PostgreSQL database and returns a list of user-defined schemas.
++
++    Returns:
++        A list of schema names.
++    """
++    with get_db_connection() as conn:
++        cursor = conn.cursor()
++        cursor.execute("""
++            SELECT schema_name
++            FROM information_schema.schemata
++            WHERE schema_name NOT LIKE 'pg_%' AND schema_name != 'information_schema'
++            ORDER BY schema_name;
++        """)
++        schemas = [row[0] for row in cursor.fetchall()]
++        cursor.close()
++        return schemas
++
++def list_postgres_tables(schema_name: str) -> list[str]:
++    """Connects to a PostgreSQL database and returns a list of tables for a given schema.
++
++    Args:
++        schema_name: The name of the schema to list tables from.
++
++    Returns:
++        A list of table names.
++    """
++    with get_db_connection() as conn:
++        cursor = conn.cursor()
++        cursor.execute("""
++            SELECT table_name
++            FROM information_schema.tables
++            WHERE table_schema = %s AND table_type = 'BASE TABLE'
++            ORDER BY table_name;
++        """, (schema_name,))
++        tables = [row[0] for row in cursor.fetchall()]
++        cursor.close()
++        return tables
++
+ # --- DDL Jobs --- #
+ 
+ def create_ddl_jobs_table():
+diff --git a/api/main.py b/api/main.py
+index f3c5427..570370d 100644
+--- a/api/main.py
++++ b/api/main.py
+@@ -1,3 +1,4 @@
++import logging
+ from fastapi import FastAPI, Response
+ import json
+ 
+@@ -5,6 +6,9 @@ from .routes import (conversion_routes, job_routes, oracle_routes,
+                      execution_routes, migration_routes)
+ from .startup import lifespan
+ 
++# Configure logging
++logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
++
+ app = FastAPI(lifespan=lifespan)
+ 
+ # Include all the different routers
+diff --git a/api/migration_db.py b/api/migration_db.py
+index 88274a4..dd02c24 100644
+--- a/api/migration_db.py
++++ b/api/migration_db.py
+@@ -14,9 +14,11 @@ def create_migration_tables():
+                 job_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                 source_db_type VARCHAR(50) NOT NULL,
+                 source_connection_string TEXT NOT NULL,
++                source_schema_name VARCHAR(255) NOT NULL,
+                 source_table_name VARCHAR(255) NOT NULL,
+                 target_db_type VARCHAR(50) NOT NULL,
+                 target_connection_string TEXT NOT NULL,
++                target_schema_name VARCHAR(255) NOT NULL,
+                 target_table_name VARCHAR(255) NOT NULL,
+                 status VARCHAR(50) NOT NULL DEFAULT 'PENDING', -- PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+                 started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+@@ -41,9 +43,11 @@ def create_migration_tables():
+ def create_migration_job(
+     source_db_type: str,
+     source_connection_string: str,
++    source_schema_name: str,
+     source_table_name: str,
+     target_db_type: str,
+     target_connection_string: str,
++    target_schema_name: str,
+     target_table_name: str
+ ) -> str:
+     """Creates a new data migration job entry in the database."""
+@@ -52,15 +56,16 @@ def create_migration_job(
+         job_id = uuid.uuid4()
+         cursor.execute("""
+             INSERT INTO data_migration_jobs (
+-                job_id, source_db_type, source_connection_string, source_table_name,
+-                target_db_type, target_connection_string, target_table_name, status
+-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
++                job_id, source_db_type, source_connection_string, source_schema_name, source_table_name,
++                target_db_type, target_connection_string, target_schema_name, target_table_name, status
++            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+         """, (
+-            job_id, source_db_type, source_connection_string, source_table_name,
+-            target_db_type, target_connection_string, target_table_name, 'PENDING'
++            job_id, source_db_type, source_connection_string, source_schema_name, source_table_name,
++            target_db_type, target_connection_string, target_schema_name, target_table_name, 'PENDING'
+         ))
+         conn.commit()
+         cursor.close()
++        print("### HELLO FROM CREATE MIGRATION JOB ###")
+         return str(job_id)
+ 
+ def get_migration_job(job_id: str) -> Optional[models.DataMigrationJob]:
+diff --git a/api/models.py b/api/models.py
+index 58765ef..7030520 100644
+--- a/api/models.py
++++ b/api/models.py
+@@ -35,7 +35,9 @@ class MigrationTableMapping(BaseModel):
+ class DataMigrationRequest(BaseModel):
+     oracle_credentials: OracleConnectionDetails
+     postgres_credentials: PostgresConnectionDetails
++    source_schema: str
+     source_table: str
++    destination_schema: str
+     destination_table: str
+ 
+ class ExtractRequest(BaseModel):
+diff --git a/api/oracle_helper.py b/api/oracle_helper.py
+index b344eab..2ccf2b2 100644
+--- a/api/oracle_helper.py
++++ b/api/oracle_helper.py
+@@ -41,6 +41,7 @@ def get_oracle_schemas(details: models.OracleConnectionDetails) -> list[str]:
+             cursor = connection.cursor()
+             cursor.execute("SELECT username FROM dba_users ORDER BY username")
+             schemas = [row[0] for row in cursor]
++            logging.info(f"Found {len(schemas)} Oracle schemas.")
+             return schemas
+     except oracledb.Error as e:
+         raise RuntimeError(f"Error fetching schemas: {e}") from e
+diff --git a/api/routes/migration_routes.py b/api/routes/migration_routes.py
+index 5120ffa..4bb34c6 100644
+--- a/api/routes/migration_routes.py
++++ b/api/routes/migration_routes.py
+@@ -1,3 +1,4 @@
++import logging
+ from fastapi import APIRouter, HTTPException
+ import os
+ import pika
+@@ -7,12 +8,16 @@ from .. import models
+ from .. import schema_comparer
+ from .. import migration_db
+ from .. import queues
++from .. import oracle_helper
++from .. import database
+ 
++logger = logging.getLogger(__name__)
+ router = APIRouter()
+ 
+ @router.post("/migrate/start")
+ def start_migration(request: models.DataMigrationRequest):
+-    if not all([request.oracle_credentials, request.postgres_credentials, request.source_table, request.destination_table]):
++    print("### HELLO FROM START MIGRATION ###")
++    if not all([request.oracle_credentials, request.postgres_credentials, request.source_schema, request.source_table, request.destination_schema, request.destination_table]):
+         raise HTTPException(status_code=400, detail="All fields are required.")
+ 
+     # 1. Perform Schema Compatibility Check
+@@ -20,9 +25,10 @@ def start_migration(request: models.DataMigrationRequest):
+         oracle_schema, postgres_schema = schema_comparer.get_table_schemas(
+             request.oracle_credentials,
+             request.source_table,
+-            request.oracle_credentials.service_name or request.oracle_credentials.sid, # Assuming schema name is service_name/sid for simplicity
++            request.source_schema, # Use the provided source_schema
+             request.postgres_credentials,
+-            request.destination_table
++            request.destination_table,
++            request.destination_schema # Use the provided destination_schema
+         )
+         is_compatible, issues = schema_comparer.compare_schemas(oracle_schema, postgres_schema)
+ 
+@@ -32,6 +38,7 @@ def start_migration(request: models.DataMigrationRequest):
+                 detail={"message": "Schema incompatibility detected", "issues": issues}
+             )
+     except Exception as e:
++        logger.exception("Schema comparison failed during migration start.")
+         raise HTTPException(status_code=500, detail=f"Schema comparison failed: {e}")
+ 
+     # 2. Create a new migration job in PostgreSQL
+@@ -39,15 +46,19 @@ def start_migration(request: models.DataMigrationRequest):
+         job_id = migration_db.create_migration_job(
+             source_db_type="Oracle",
+             source_connection_string=json.dumps(request.oracle_credentials.dict()),
++            source_schema_name=request.source_schema, # Add source_schema_name
+             source_table_name=request.source_table,
+             target_db_type="PostgreSQL",
+             target_connection_string=json.dumps(request.postgres_credentials.dict()),
++            target_schema_name=request.destination_schema, # Add target_schema_name
+             target_table_name=request.destination_table
+         )
+     except Exception as e:
++        logger.exception("Failed to create migration job during migration start.")
+         raise HTTPException(status_code=500, detail=f"Failed to create migration job: {e}")
+ 
+     # 3. Publish message to RabbitMQ for worker to pick up
++    print("DEBUG: Starting Publish to RabbitMQ")
+     try:
+         connection = queues.get_rabbitmq_connection()
+         if not connection:
+@@ -75,6 +86,7 @@ def start_migration(request: models.DataMigrationRequest):
+ 
+         return {"job_id": job_id, "message": "Migration job submitted successfully."}
+     except Exception as e:
++        logger.exception("Error submitting migration job to queue during migration start.")
+         migration_db.update_migration_job_status(job_id, "FAILED", error_details=str(e))
+         raise HTTPException(status_code=500, detail=f"Error submitting migration job to queue: {e}")
+ 
+@@ -89,3 +101,35 @@ def check_status(job_id: str):
+         raise HTTPException(status_code=404, detail="Migration job not found.")
+     except Exception as e:
+         raise HTTPException(status_code=500, detail=f"Error checking migration job status: {e}")
++
++@router.post("/oracle/schemas")
++def get_oracle_schemas_route(details: models.OracleConnectionDetails):
++    try:
++        schemas = oracle_helper.get_oracle_schemas(details)
++        return {"schemas": schemas}
++    except Exception as e:
++        raise HTTPException(status_code=500, detail=f"Error fetching Oracle schemas: {e}")
++
++@router.post("/oracle/schemas/{schema_name}/tables")
++def list_oracle_tables_route(schema_name: str, details: models.OracleConnectionDetails):
++    try:
++        tables = oracle_helper.list_oracle_objects(details, schema_name, "TABLE")
++        return {"tables": tables}
++    except Exception as e:
++        raise HTTPException(status_code=500, detail=f"Error fetching Oracle tables for schema {schema_name}: {e}")
++
++@router.post("/postgres/schemas")
++def get_postgres_schemas_route():
++    try:
++        schemas = database.get_postgres_schemas()
++        return {"schemas": schemas}
++    except Exception as e:
++        raise HTTPException(status_code=500, detail=f"Error fetching PostgreSQL schemas: {e}")
++
++@router.post("/postgres/schemas/{schema_name}/tables")
++def list_postgres_tables_route(schema_name: str):
++    try:
++        tables = database.list_postgres_tables(schema_name)
++        return {"tables": tables}
++    except Exception as e:
++        raise HTTPException(status_code=500, detail=f"Error fetching PostgreSQL tables for schema {schema_name}: {e}")
+diff --git a/api/schema_comparer.py b/api/schema_comparer.py
+index acbdca9..25057c6 100644
+--- a/api/schema_comparer.py
++++ b/api/schema_comparer.py
+@@ -72,7 +72,7 @@ def get_table_schemas(
+     oracle_schema_name: str,
+     postgres_details: models.PostgresConnectionDetails,
+     postgres_table_name: str,
+-    postgres_schema_name: str = 'public'
++    postgres_schema_name: str
+ ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+     """
+     Fetches schemas for both Oracle and PostgreSQL tables.
+diff --git a/app.py b/app.py
+index 7cab5b2..ba62a41 100644
+--- a/app.py
++++ b/app.py
+@@ -23,43 +23,85 @@ graph TD
+     C --> D[End]
+ """
+ 
+-def dm_connect_and_get_tables(db_type, user, password, host, port, db_name_or_service):
+-    # This function can also be moved to the backend in the future
+-    tables = []
++def dm_connect_and_get_oracle_schemas(user, password, host, port, service_name):
+     try:
+-        if db_type == "Oracle":
+-            import oracledb
+-            dsn = oracledb.makedsn(host, port, service_name=db_name_or_service)
+-            conn = oracledb.connect(user=user, password=password, dsn=dsn)
+-            cursor = conn.cursor()
+-            cursor.execute("SELECT table_name FROM user_tables ORDER BY table_name")
+-            tables = [row[0] for row in cursor.fetchall()]
+-            cursor.close()
+-            conn.close()
+-            return gr.update(choices=tables, value=None, interactive=True), gr.update(value=f"Connected to Oracle. Found {len(tables)} tables.", visible=True)
+-        elif db_type == "PostgreSQL":
+-            import psycopg2
+-            conn = psycopg2.connect(dbname=db_name_or_service, user=user, password=password, host=host, port=port)
+-            cursor = conn.cursor()
+-            cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")
+-            tables = [row[0] for row in cursor.fetchall()]
+-            cursor.close()
+-            conn.close()
+-            return gr.update(choices=tables, value=None, interactive=True), gr.update(value=f"Connected to PostgreSQL. Found {len(tables)} tables.", visible=True)
++        oracle_credentials = {
++            "user": user,
++            "password": password,
++            "host": host,
++            "port": port,
++            "service_name": service_name
++        }
++        schemas = api_client.get_oracle_schemas(oracle_credentials)
++        if not schemas:
++            return gr.update(choices=[], value=None, interactive=True, visible=True), gr.update(value="Connected to Oracle, but no schemas found or accessible. Check permissions or connection details.", visible=True), gr.update(visible=False)
++        return gr.update(choices=schemas, value=None, interactive=True, visible=True), gr.update(value=f"Connected to Oracle. Found {len(schemas)} schemas.", visible=True), gr.update(visible=True)
+     except Exception as e:
+-        return gr.update(choices=[], value=None), gr.update(value=str(e), visible=True)
++        return gr.update(choices=[], value=None, interactive=True, visible=False), gr.update(value=str(e), visible=True), gr.update(visible=False)
+ 
+-def dm_start_migration(ora_user, ora_pass, ora_host, ora_port, ora_service, pg_user, pg_pass, pg_host, pg_port, pg_db, ora_table, pg_table):
++def dm_connect_and_get_postgres_schemas(user, password, host, port, dbname):
++    try:
++        postgres_credentials = {
++            "user": user,
++            "password": password,
++            "host": host,
++            "port": port,
++            "dbname": dbname
++        }
++        schemas = api_client.get_postgres_schemas(postgres_credentials)
++        return gr.update(choices=schemas, value=None, interactive=True, visible=True), gr.update(value=f"Connected to PostgreSQL. Found {len(schemas)} schemas.", visible=True), gr.update(visible=True)
++    except Exception as e:
++        return gr.update(choices=[], value=None, interactive=True, visible=False), gr.update(value=str(e), visible=True), gr.update(visible=False)
++
++def dm_list_oracle_tables(user, password, host, port, service_name, schema_name):
++    try:
++        oracle_credentials = {
++            "user": user,
++            "password": password,
++            "host": host,
++            "port": port,
++            "service_name": service_name
++        }
++        tables = api_client.get_oracle_tables(oracle_credentials, schema_name)
++        return gr.update(choices=tables, value=None, interactive=True, visible=True), gr.update(value=f"Found {len(tables)} tables in schema {schema_name}.", visible=True)
++    except Exception as e:
++        return gr.update(choices=[], value=None, interactive=True, visible=False), gr.update(value=str(e), visible=True)
++
++def dm_list_postgres_tables(user, password, host, port, dbname, schema_name):
++    try:
++        postgres_credentials = {
++            "user": user,
++            "password": password,
++            "host": host,
++            "port": port,
++            "dbname": dbname
++        }
++        tables = api_client.get_postgres_tables(postgres_credentials, schema_name)
++        return gr.update(choices=tables, value=None, interactive=True, visible=True), gr.update(value=f"Found {len(tables)} tables in schema {schema_name}.", visible=True)
++    except Exception as e:
++        return gr.update(choices=[], value=None, interactive=True, visible=False), gr.update(value=str(e), visible=True)
++
++def dm_start_migration(ora_user, ora_pass, ora_host, ora_port, ora_service, ora_schema, pg_user, pg_pass, pg_host, pg_port, pg_db, pg_schema, ora_table, pg_table):
+     ora_creds = {'user': ora_user, 'password': ora_pass, 'host': ora_host, 'port': ora_port, 'service_name': ora_service}
+     pg_creds = {'user': pg_user, 'password': pg_pass, 'host': pg_host, 'port': pg_port, 'dbname': pg_db}
+-    if not all(ora_creds.values()) or not all(pg_creds.values()) or not ora_table or not pg_table:
++    if not all(ora_creds.values()) or not all(pg_creds.values()) or not ora_schema or not ora_table or not pg_schema or not pg_table:
+         return "Error: All fields are required.", None
+ 
+     try:
+-        task_id = api_client.start_migration(ora_creds, pg_creds, ora_table, pg_table)
++        task_id = api_client.start_migration(ora_creds, pg_creds, ora_schema, ora_table, pg_schema, pg_table)
+         return f"Migration task {task_id} submitted.", task_id
+-    except Exception as e:
+-        return f"Error submitting task: {e}", None
++    except requests.exceptions.RequestException as e:
++        error_message = f"Error submitting task: {e}"
++        if e.response is not None:
++            try:
++                error_detail = e.response.json().get("detail")
++                if isinstance(error_detail, dict) and "message" in error_detail and "issues" in error_detail:
++                    error_message = f"Schema Incompatibility: {error_detail['message']}\n" + "\n".join(error_detail['issues'])
++                elif isinstance(error_detail, str):
++                    error_message = f"Error submitting task: {error_detail}"
++            except json.JSONDecodeError:
++                pass # Fallback to generic error message
++        return error_message, None
+ 
+ def dm_check_status(task_id):
+     if not task_id:
+@@ -507,6 +549,8 @@ with gr.Blocks() as demo:
+                 dm_ora_service = gr.Textbox(label="Service Name", value=os.getenv("ORACLE_SERVICE_NAME", "freepdb1"))
+                 dm_ora_connect_btn = gr.Button("Connect to Oracle")
+                 dm_ora_status = gr.Textbox(label="Connection Status", interactive=False, visible=False)
++                dm_ora_schema = gr.Dropdown(label="Oracle Source Schema", interactive=False, visible=False)
++                dm_ora_list_tables_btn = gr.Button("List Oracle Tables", visible=False)
+             with gr.Column(scale=1):
+                 gr.Markdown("### PostgreSQL Connection")
+                 dm_pg_host = gr.Textbox(label="Host", value=os.getenv("POSTGRES_HOST", "localhost"))
+@@ -516,11 +560,13 @@ with gr.Blocks() as demo:
+                 dm_pg_db = gr.Textbox(label="Database", value=os.getenv("POSTGRES_DB", "postgres"))
+                 dm_pg_connect_btn = gr.Button("Connect to PostgreSQL")
+                 dm_pg_status = gr.Textbox(label="Connection Status", interactive=False, visible=False)
++                dm_pg_schema = gr.Dropdown(label="PostgreSQL Destination Schema", interactive=False, visible=False)
++                dm_pg_list_tables_btn = gr.Button("List PostgreSQL Tables", visible=False)
+         with gr.Row():
+             with gr.Column():
+-                dm_ora_tables = gr.Dropdown(label="Oracle Source Table", interactive=False)
++                dm_ora_tables = gr.Dropdown(label="Oracle Source Table", interactive=False, visible=False)
+             with gr.Column():
+-                dm_pg_tables = gr.Dropdown(label="PostgreSQL Destination Table", interactive=False)
++                dm_pg_tables = gr.Dropdown(label="PostgreSQL Destination Table", interactive=False, visible=False)
+         with gr.Row():
+             dm_migrate_btn = gr.Button("Migrate Data", variant="primary")
+             dm_refresh_btn = gr.Button("Refresh Status")
+@@ -824,13 +870,23 @@ with gr.Blocks() as demo:
+ 
+     # --- Data Migration Event Handlers ---
+     dm_ora_connect_btn.click(
+-        dm_connect_and_get_tables,
+-        inputs=[gr.State("Oracle"), dm_ora_user, dm_ora_pass, dm_ora_host, dm_ora_port, dm_ora_service],
+-        outputs=[dm_ora_tables, dm_ora_status]
++        dm_connect_and_get_oracle_schemas,
++        inputs=[dm_ora_user, dm_ora_pass, dm_ora_host, dm_ora_port, dm_ora_service],
++        outputs=[dm_ora_schema, dm_ora_status, dm_ora_list_tables_btn]
+     )
+     dm_pg_connect_btn.click(
+-        dm_connect_and_get_tables,
+-        inputs=[gr.State("PostgreSQL"), dm_pg_user, dm_pg_pass, dm_pg_host, dm_pg_port, dm_pg_db],
++        dm_connect_and_get_postgres_schemas,
++        inputs=[dm_pg_user, dm_pg_pass, dm_pg_host, dm_pg_port, dm_pg_db],
++        outputs=[dm_pg_schema, dm_pg_status, dm_pg_list_tables_btn]
++    )
++    dm_ora_schema.change(
++        dm_list_oracle_tables,
++        inputs=[dm_ora_user, dm_ora_pass, dm_ora_host, dm_ora_port, dm_ora_service, dm_ora_schema],
++        outputs=[dm_ora_tables, dm_ora_status]
++    )
++    dm_pg_schema.change(
++        dm_list_postgres_tables,
++        inputs=[dm_pg_user, dm_pg_pass, dm_pg_host, dm_pg_port, dm_pg_db, dm_pg_schema],
+         outputs=[dm_pg_tables, dm_pg_status]
+     )
+     dm_migrate_btn.click(
+@@ -841,11 +897,13 @@ with gr.Blocks() as demo:
+             dm_ora_host,
+             dm_ora_port,
+             dm_ora_service,
++            dm_ora_schema,
+             dm_pg_user,
+             dm_pg_pass,
+             dm_pg_host,
+             dm_pg_port,
+             dm_pg_db,
++            dm_pg_schema,
+             dm_ora_tables,
+             dm_pg_tables
+         ],
+diff --git a/prj-docs/demo.md b/prj-docs/demo.md
+index 0e23d85..faeafc5 100644
+--- a/prj-docs/demo.md
++++ b/prj-docs/demo.md
+@@ -30,4 +30,7 @@ GRANT CREATE SESSION, UNLIMITED TABLESPACE TO DEMOARUL;
+ ALTER SESSION SET CONTAINER = CDB$ROOT;
+ 
+ CREATE USER C##demo IDENTIFIED BY password CONTAINER=ALL;
+-GRANT DBA TO C##demo CONTAINER=ALL;
+\ No newline at end of file
++GRANT DBA TO C##demo CONTAINER=ALL;
++
++
++docker exec -it some-rabbit rabbitmqadmin -f tsv -q list queues name | tr -d '\r' | xargs -I {} rabbitmqadmin delete queue name={}
+\ No newline at end of file
+diff --git a/ui/api_client.py b/ui/api_client.py
+index e370a5e..41c921d 100644
+--- a/ui/api_client.py
++++ b/ui/api_client.py
+@@ -3,18 +3,40 @@ import json
+ 
+ API_URL = "http://127.0.0.1:8000"
+ 
+-def start_migration(oracle_credentials, postgres_credentials, source_table, destination_table):
++def start_migration(oracle_credentials, postgres_credentials, source_schema, source_table, destination_schema, destination_table):
+     payload = {
+         "oracle_credentials": oracle_credentials,
+         "postgres_credentials": postgres_credentials,
++        "source_schema": source_schema,
+         "source_table": source_table,
++        "destination_schema": destination_schema,
+         "destination_table": destination_table,
+     }
+     response = requests.post(f"{API_URL}/migrate/start", json=payload)
+     response.raise_for_status()
+-    return response.json()["task_id"]
++    return response.json()["job_id"]
+ 
+ def check_migration_status(task_id):
+     response = requests.get(f"{API_URL}/migrate/status/{task_id}")
+     response.raise_for_status()
+     return response.json()
++
++def get_oracle_schemas(oracle_credentials):
++    response = requests.post(f"{API_URL}/oracle/schemas", json=oracle_credentials)
++    response.raise_for_status()
++    return response.json()["schemas"]
++
++def get_oracle_tables(oracle_credentials, schema_name):
++    response = requests.post(f"{API_URL}/oracle/schemas/{schema_name}/tables", json=oracle_credentials)
++    response.raise_for_status()
++    return response.json()["tables"]
++
++def get_postgres_schemas(postgres_credentials):
++    response = requests.post(f"{API_URL}/postgres/schemas", json=postgres_credentials)
++    response.raise_for_status()
++    return response.json()["schemas"]
++
++def get_postgres_tables(postgres_credentials, schema_name):
++    response = requests.post(f"{API_URL}/postgres/schemas/{schema_name}/tables", json=postgres_credentials)
++    response.raise_for_status()
++    return response.json()["tables"]

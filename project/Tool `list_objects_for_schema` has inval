@@ -1,0 +1,55 @@
+Tool `list_objects_for_schema` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more. (at /properties/schemas/items/enum)
+	- Schema: {"type":"object","properties":{"host":{"type":"string","description":"","default":"localhost"},"port":{"type":"number","description":"","default":"1521"},"user":{"type":"string","description":"","default":"migrator"},"password":{"type":"string","description":"","default":"password"},"service_name":{"type":"string","description":"","default":"xe"},"sid":{"type":"string","description":"","default":"xe"},"connection_type":{"enum":["Service Name","SID"],"title":"Radio","type":"string","description":"","default":"Service Name"},"schemas":{"items":{"enum":[],"type":"string"},"title":"Checkbox Group","type":"array","description":""},"object_type":{"enum":["TABLE","PROCEDURE","FUNCTION","INDEX","PACKAGE","VIEW","TRIGGER"],"title":"Radio","type":"string","description":"","default":"TABLE"}}}
+
+Tool `extract_ddl` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more. (at /properties/schemas/items/enum)
+	- Array has too few items. Expected 1 or more. (at /properties/object_names/items/enum)
+	- Schema: {"type":"object","properties":{"host":{"type":"string","description":"","default":"localhost"},"port":{"type":"number","description":"","default":"1521"},"user":{"type":"string","description":"","default":"migrator"},"password":{"type":"string","description":"","default":"password"},"service_name":{"type":"string","description":"","default":"xe"},"sid":{"type":"string","description":"","default":"xe"},"connection_type":{"enum":["Service Name","SID"],"title":"Radio","type":"string","description":"","default":"Service Name"},"schemas":{"items":{"enum":[],"type":"string"},"title":"Checkbox Group","type":"array","description":""},"object_types":{"enum":["TABLE","PROCEDURE","FUNCTION","INDEX","PACKAGE","VIEW","TRIGGER"],"title":"Radio","type":"string","description":"","default":"TABLE"},"object_names":{"items":{"enum":[],"type":"string"},"title":"Checkbox Group","type":"array","description":""},"select_all":{"type":"boolean","description":""}}}
+
+Tool `select_all_objects` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more.
+	- Schema: {"type":"object","properties":{"select_all":{"type":"boolean","description":""}}}
+
+Tool `dm_list_oracle_tables` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more. (at /properties/schema_name/enum)
+	- Schema: {"type":"object","properties":{"user":{"type":"string","description":"","default":"migrator"},"password":{"type":"string","description":"","default":"password"},"host":{"type":"string","description":"","default":"localhost"},"port":{"type":"number","description":"","default":"1521"},"service_name":{"type":"string","description":"","default":"xe"},"schema_name":{"type":"string","enum":[],"description":""}}}
+
+Tool `dm_connect_and_get_postgres_schemas` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more.
+	- Schema: {"type":"object","properties":{"user":{"type":"string","description":"","default":"admin"},"password":{"type":"string","description":"","default":"password"},"host":{"type":"string","description":"","default":"localhost"},"port":{"type":"number","description":"","default":"5432"},"dbname":{"type":"string","description":"","default":"postgres"}}}
+
+Tool `dm_list_postgres_tables` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more. (at /properties/schema_name/enum)
+	- Schema: {"type":"object","properties":{"user":{"type":"string","description":"","default":"admin"},"password":{"type":"string","description":"","default":"password"},"host":{"type":"string","description":"","default":"localhost"},"port":{"type":"number","description":"","default":"5432"},"dbname":{"type":"string","description":"","default":"postgres"},"schema_name":{"type":"string","enum":[],"description":""}}}
+
+Tool `dm_get_oracle_table_ddl` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more. (at /properties/schema_name/enum)
+	- Schema: {"type":"object","properties":{"user":{"type":"string","description":"","default":"migrator"},"password":{"type":"string","description":"","default":"password"},"host":{"type":"string","description":"","default":"localhost"},"port":{"type":"number","description":"","default":"1521"},"service_name":{"type":"string","description":"","default":"xe"},"schema_name":{"type":"string","enum":[],"description":""},"table_name":{"type":"string","enum":[],"description":""}}}
+
+Tool `dm_get_postgres_table_ddl` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more. (at /properties/schema_name/enum)
+	- Array has too few items. Expected 1 or more. (at /properties/table_name/enum)
+	- Schema: {"type":"object","properties":{"user":{"type":"string","description":"","default":"admin"},"password":{"type":"string","description":"","default":"password"},"host":{"type":"string","description":"","default":"localhost"},"port":{"type":"number","description":"","default":"5432"},"dbname":{"type":"string","description":"","default":"postgres"},"schema_name":{"type":"string","enum":[],"description":""},"table_name":{"type":"string","enum":[],"description":""}}}
+
+Tool `dm_start_migration` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more. (at /properties/ora_schema/type)
+	- Array has too few items. Expected 1 or more. (at /properties/pg_user/type)
+	- Schema: {"type":"object","properties":{"ora_user":{"type":"string","description":"","default":"migrator"},"ora_pass":{"type":"string","description":"","default":"password"},"ora_host":{"type":"string","description":"","default":"localhost"},"ora_port":{"type":"number","description":"","default":"1521"},"ora_service":{"type":"string","description":"","default":"xe"},"ora_schema":{"type":"string","enum":[],"description":""},"pg_user":{"type":"string","description":"","default":"admin"},"pg_pass":{"type":"string","description":"","default":"password"},"pg_host":{"type":"string","description":"","default":"localhost"},"pg_port":{"type":"number","description":"","default":"5432"},"pg_db":{"type":"string","description":"","default":"postgres"},"pg_schema":{"type":"string","enum":[],"description":""},"ora_table":{"type":"string","enum":[],"description":""},"pg_table":{"type":"string","enum":[],"description":""}}}
+
+Tool `on_prev_click` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more. (at /properties/table_name/enum)
+	- Schema: {"type":"object","properties":{"table_name":{"type":"string","enum":[],"description":""},"page_num":{"type":"integer","description":"","default":1},"search_term":{"type":"string","description":""},"status_filter":{"type":"string","enum":["all","pending","verified","failed"],"description":"","default":"all"},"total_pages":{"type":"number","description":"","default":1}}}
+
+Tool `on_next_click` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more. (at /properties/table_name/enum)
+	- Schema: {"type":"object","properties":{"table_name":{"type":"string","enum":[],"description":""},"page_num":{"type":"integer","description":"","default":1},"search_term":{"type":"string","description":""},"status_filter":{"type":"string","enum":["all","pending","verified","failed"],"description":"","default":"all"},"total_pages":{"type":"number","description":"","default":1}}}
+
+Tool `refresh_code_review` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more.
+	- Schema: {"type":"object","properties":{}}
+
+Tool `chat_with_rag_backend` has invalid JSON parameters:
+	- Array has too few items. Expected 1 or more. (at /properties/document_selection/items/enum)
+	- Schema: {"type":"object","properties":{"message":{"type":"string","description":""},"document_selection":{"items":{"enum":[],"type":"string"},"title":"Checkbox Group","type":"array","description":""},"user_id":{"type":"string","description":"","default":"default_user"}}}
+

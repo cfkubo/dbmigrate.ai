@@ -1,0 +1,562 @@
+diff --git a/api/database.py b/api/database.py
+index bd273c2..7ab4e7c 100644
+--- a/api/database.py
++++ b/api/database.py
+@@ -213,10 +213,30 @@ def create_job(original_sql, job_type):
+ def get_job(job_id: str) -> Optional[dict]:
+     with get_db_connection() as conn:
+         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+-        cursor.execute("SELECT * FROM migration_jobs.jobs WHERE job_id = %s", (job_id,))
+-        job = cursor.fetchone()
++        
++        # Get all possible job table names
++        job_table_names = get_job_table_names()
++        
++        for table_name in job_table_names:
++            try:
++                # Check if the table has a 'job_id' column and try to retrieve the job
++                # This assumes all job tables have a 'job_id' column
++                cursor.execute(f"SELECT * FROM {table_name} WHERE job_id = %s", (job_id,))
++                job = cursor.fetchone()
++                if job:
++                    cursor.close()
++                    return job
++            except psycopg2.errors.UndefinedTable:
++                # Log a warning if a table from the list doesn't exist, but continue searching
++                logger.warning(f"Table {table_name} not found when searching for job {job_id}.")
++            except psycopg2.errors.UndefinedColumn:
++                # Log a warning if 'job_id' column is not found in a table, but continue searching
++                logger.warning(f"Column 'job_id' not found in table {table_name} when searching for job {job_id}.")
++            except Exception as e:
++                logger.error(f"Error searching for job {job_id} in table {table_name}: {e}", exc_info=True)
++
+         cursor.close()
+-        return job
++        return None # Job not found in any table
+ 
+ def update_job_status(job_id, status, converted_sql=None, error_message=None):
+     with get_db_connection() as conn:
+@@ -291,6 +311,40 @@ def list_postgres_tables(schema_name: str) -> list[str]:
+         cursor.close()
+         return tables
+ 
++def create_postgres_database(host, port, user, password, dbname_to_create):
++    """
++    Connects to a PostgreSQL server (using the 'postgres' database) and creates a new database.
++    """
++    conn = None
++    try:
++        # Connect to the default 'postgres' database to create a new one
++        conn = psycopg2.connect(
++            host=host,
++            port=port,
++            user=user,
++            password=password,
++            dbname="postgres"  # Connect to default database
++        )
++        conn.autocommit = True  # Autocommit for CREATE DATABASE
++        cursor = conn.cursor()
++
++        # Check if the database already exists
++        cursor.execute(f"SELECT 1 FROM pg_database WHERE datname = '{dbname_to_create}'")
++        if cursor.fetchone():
++            logger.info(f"Database '{dbname_to_create}' already exists. Skipping creation.")
++            return True
++
++        cursor.execute(f"CREATE DATABASE {dbname_to_create}")
++        logger.info(f"Database '{dbname_to_create}' created successfully.")
++        cursor.close()
++        return True
++    except psycopg2.Error as e:
++        logger.error(f"Error creating database '{dbname_to_create}': {e}", exc_info=True)
++        return False
++    finally:
++        if conn:
++            conn.close()
++
+ # --- DDL Jobs --- #
+ 
+ def create_ddl_jobs_table(conn=None):
+@@ -374,6 +428,25 @@ def create_ddl_parent_job():
+         cursor.close()
+         return str(job_id)
+ 
++def create_ddl_conversion_job(original_sql: str, job_type: str):
++    with get_db_connection() as conn:
++        cursor = conn.cursor()
++        job_id = uuid.uuid4()
++        try:
++            cursor.execute(
++                "INSERT INTO migration_jobs.ddl_jobs (job_id, status, original_sql, job_type) VALUES (%s, %s, %s, %s)",
++                (job_id, 'pending', original_sql, job_type)
++            )
++            conn.commit()
++            logger.info(f"DDL conversion job {job_id} created successfully.")
++            return str(job_id)
++        except Exception as e:
++            conn.rollback()
++            logger.error(f"Error creating DDL conversion job: {e}", exc_info=True)
++            raise # Re-raise the exception to propagate the error
++        finally:
++            cursor.close()
++
+ def create_ddl_child_job(parent_job_id, original_sql, table_name):
+     with get_db_connection() as conn:
+         cursor = conn.cursor()
+@@ -411,22 +484,22 @@ def get_ddl_child_jobs(parent_job_id: str) -> list[dict]:
+ def get_ddl_job(job_id: str) -> Optional[dict]:
+     with get_db_connection() as conn:
+         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+-        cursor.execute("SELECT * FROM migration_jobs.ddl_jobs WHERE job_id = %s limit 100 order by created_at desc", (job_id,))
++        cursor.execute("SELECT * FROM migration_jobs.ddl_jobs WHERE job_id = %s", (job_id,))
+         job = cursor.fetchone()
+         cursor.close()
+         return job
+ 
+-def update_ddl_job_status(job_id, status, table_name, converted_sql=None, error_message=None):
++def update_ddl_job_status(job_id, status, converted_sql=None, error_message=None):
+     with get_db_connection() as conn:
+         cursor = conn.cursor()
+         if converted_sql is not None:
+             cursor.execute(
+-                f"UPDATE {table_name} SET status = %s, converted_sql = %s, error_message = %s WHERE job_id = %s",
++                "UPDATE migration_jobs.ddl_jobs SET status = %s, converted_sql = %s, error_message = %s WHERE job_id = %s",
+                 (status, converted_sql, error_message, job_id)
+             )
+         else:
+             cursor.execute(
+-                "UPDATE {table_name} SET status = %s, error_message = %s WHERE job_id = %s",
++                "UPDATE migration_jobs.ddl_jobs SET status = %s, error_message = %s WHERE job_id = %s",
+                 (status, error_message, job_id)
+             )
+         conn.commit()
+diff --git a/api/routes/conversion_routes.py b/api/routes/conversion_routes.py
+index 60e59e0..12b7634 100644
+--- a/api/routes/conversion_routes.py
++++ b/api/routes/conversion_routes.py
+@@ -70,7 +70,7 @@ async def convert_oracle_to_postgres_file(file: UploadFile = File(...)):
+ 
+ @router.post("/convert-ddl")
+ async def convert_oracle_to_postgres_ddl(conversion_input: models.ConversionInput):
+-    job_id = database.create_job(conversion_input.sql, 'ddl')
++    job_id = database.create_ddl_conversion_job(conversion_input.sql, 'ddl')
+     connection = queues.get_rabbitmq_connection()
+     if not connection:
+         raise HTTPException(status_code=500, detail="Failed to connect to RabbitMQ.")
+@@ -104,7 +104,7 @@ async def convert_oracle_to_postgres_ddl_file(file: UploadFile = File(...)):
+         channel = connection.channel()
+         channel.queue_declare(queue='conversion_jobs', durable=True, arguments={'x-queue-type': 'quorum', 'x-dead-letter-exchange': 'dlx'})
+         for proc in procedures:
+-            job_id = database.create_job(proc, 'ddl')
++            job_id = database.create_ddl_conversion_job(proc, 'ddl')
+             job_ids.append(job_id)
+             channel.basic_publish(
+                 exchange='',
+diff --git a/api/routes/execution_routes.py b/api/routes/execution_routes.py
+index e2b8db4..ca0d991 100644
+--- a/api/routes/execution_routes.py
++++ b/api/routes/execution_routes.py
+@@ -6,6 +6,7 @@ import json
+ from .. import models
+ from .. import execution_logic
+ from .. import queues
++from .. import database # Added this import
+ 
+ router = APIRouter()
+ 
+@@ -24,6 +25,23 @@ async def test_postgres_connection(details: models.PostgresConnectionDetails):
+     except psycopg2.Error as e:
+         raise HTTPException(status_code=400, detail=f"Connection failed: {e}")
+ 
++@router.post("/create-database")
++async def create_database(details: models.PostgresConnectionDetails):
++    try:
++        success = database.create_postgres_database(
++            host=details.host,
++            port=details.port,
++            user=details.user,
++            password=details.password,
++            dbname_to_create=details.dbname
++        )
++        if success:
++            return JSONResponse(content={"message": f"Database '{details.dbname}' created successfully or already exists."})
++        else:
++            raise HTTPException(status_code=500, detail=f"Failed to create database '{details.dbname}'. Check logs for details.")
++    except Exception as e:
++        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
++
+ @router.post("/execute-sql")
+ async def execute_sql_file(file: UploadFile = File(...), pg_creds_json: str = Form(...), is_verification: bool = Form(False)):
+     content = await file.read()
+diff --git a/app.py b/app.py
+index d8d4eb7..e73a567 100644
+--- a/app.py
++++ b/app.py
+@@ -160,7 +160,7 @@ def poll_job_status(job_id):
+             job = response.json()
+             print(f"Polling job {job_id}, received: {job}")
+             status = job.get("status")
+-            yield f"Job Status: {status}", "", gr.update(visible=False)
++            yield f"Job ID: {job_id} - Status: {status}", "", gr.update(visible=False)
+ 
+             if status in ["verified", "failed"]:
+                 converted_sql = job.get("converted_sql", "")
+@@ -208,7 +208,7 @@ def poll_aggregate_status(job_ids):
+             if status == "processing":
+                 pending_count = len(result.get("pending_jobs", []))
+                 total_count = result.get("total_jobs", len(job_ids))
+-                yield f"Processing... {total_count - pending_count}/{total_count} jobs complete.", "", "", gr.update(visible=False), gr.update(visible=False)
++                yield f"Job IDs: {', '.join(job_ids)} - Processing... {total - pending_count}/{total_count} jobs complete.", "", "", gr.update(visible=False), gr.update(visible=False)
+             elif status == "completed":
+                 successful_sql = result.get("successful_sql", "")
+                 failed_sql = result.get("failed_sql", "")
+@@ -225,7 +225,7 @@ def poll_aggregate_status(job_ids):
+                     with open(failed_filename, "w") as f:
+                         f.write(failed_sql)
+ 
+-                yield "Completed", successful_sql, failed_sql, gr.update(value=successful_filename, visible=True if successful_sql else False), gr.update(value=failed_filename, visible=True if failed_sql else False)
++                yield f"Job IDs: {', '.join(job_ids)} - Completed", successful_sql, failed_sql, gr.update(value=successful_filename, visible=True if successful_sql else False), gr.update(value=failed_filename, visible=True if failed_sql else False)
+                 break
+ 
+         except requests.exceptions.RequestException as e:
+@@ -684,6 +684,8 @@ with gr.Blocks() as demo:
+                 sql_exec_pg_user = gr.Textbox(label="User", value=os.getenv("POSTGRES_USER", "postgres"))
+                 sql_exec_pg_pass = gr.Textbox(label="Password", type="password", value=os.getenv("POSTGRES_PASSWORD", "postgres"))
+                 sql_exec_pg_db = gr.Textbox(label="Database", value=os.getenv("POSTGRES_DB", "postgres"))
++                sql_exec_create_db_if_not_exists = gr.Checkbox(label="Create Database if not exists", value=False)
++                sql_exec_create_db_button = gr.Button("Create Database")
+                 sql_exec_test_button = gr.Button("Test Connection")
+                 sql_exec_conn_status = gr.Textbox(label="Connection Status", interactive=False)
+ 
+@@ -695,25 +697,47 @@ with gr.Blocks() as demo:
+                 sql_exec_details = gr.JSON(label="Job Details", visible=False)
+                 sql_exec_statement_results = gr.DataFrame(label="Statement Execution Results", visible=False, headers=["Statement", "Status", "Error"])
+ 
+-        def test_pg_connection(pg_host, pg_port, pg_user, pg_pass, pg_db):
++        def test_pg_connection(pg_host, pg_port, pg_user, pg_pass):
++            # Test connection to the PostgreSQL server itself, not a specific database
++            # by connecting to the default 'postgres' database
+             pg_creds = {
+                 "host": pg_host,
+                 "port": int(pg_port),
+                 "user": pg_user,
+                 "password": pg_pass,
+-                "dbname": pg_db
++                "dbname": "postgres" # Connect to a default database to test server connectivity
+             }
+             try:
+                 response = requests.post(f"{API_URL}/test-postgres-connection", json=pg_creds)
+                 response.raise_for_status()
+-                return response.json().get("message", "Success!")
++                return response.json().get("message", "Connection to PostgreSQL server successful!")
++            except requests.exceptions.RequestException as e:
++                error_detail = str(e)
++                try:
++                    error_detail = e.response.json().get("detail", error_detail)
++                except (ValueError, AttributeError):
++                    pass
++                return f"Error connecting to PostgreSQL server: {error_detail}"
++
++        def create_database_frontend(pg_host, pg_port, pg_user, pg_pass, pg_db):
++            pg_creds = {
++                "host": pg_host,
++                "port": int(pg_port),
++                "user": pg_user,
++                "password": pg_pass,
++                "dbname": pg_db
++            }
++            try:
++                response = requests.post(f"{API_URL}/create-database", json=pg_creds)
++                response.raise_for_status()
++                return response.json().get("message", f"Database '{pg_db}' created successfully or already exists.")
+             except requests.exceptions.RequestException as e:
+                 error_detail = str(e)
+                 try:
+                     error_detail = e.response.json().get("detail", error_detail)
+                 except (ValueError, AttributeError):
+                     pass
+-                return f"Error: {error_detail}"
++                return f"Error creating database: {error_detail}"
+ 
+         def submit_sql_file(file, pg_host, pg_port, pg_user, pg_pass, pg_db):
+             if file is None:
+@@ -781,8 +805,8 @@ with gr.Blocks() as demo:
+             outputs=[sql_exec_status, sql_exec_job_id_state, sql_exec_details, sql_exec_statement_results]
+         )
+ 
+-        sql_exec_test_button.click(
+-            test_pg_connection,
++        sql_exec_create_db_button.click(
++            create_database_frontend,
+             inputs=[
+                 sql_exec_pg_host, 
+                 sql_exec_pg_port, 
+@@ -790,6 +814,17 @@ with gr.Blocks() as demo:
+                 sql_exec_pg_pass, 
+                 sql_exec_pg_db
+             ],
++            outputs=sql_exec_conn_status # Display status in the same connection status box
++        )
++
++        sql_exec_test_button.click(
++            test_pg_connection,
++            inputs=[
++                sql_exec_pg_host, 
++                sql_exec_pg_port, 
++                sql_exec_pg_user, 
++                sql_exec_pg_pass
++            ],
+             outputs=sql_exec_conn_status
+         )
+ 
+@@ -809,8 +844,9 @@ with gr.Blocks() as demo:
+             try:
+                 response = requests.get(f"{API_URL}/jobs/types")
+                 response.raise_for_status()
+-                print(f"Fetched job types: {response.json()}")
+-                return response.json()
++                job_types = response.json()
++                print(f"Fetched job types: {job_types}")
++                return job_types
+             except requests.exceptions.RequestException as e:
+                 print(f"Error fetching job types: {e}")
+                 return []
+@@ -870,9 +906,10 @@ with gr.Blocks() as demo:
+ 
+         def on_load():
+             job_types = get_job_types_from_api()
+-            table_name = job_types[0] if job_types else None
+-            df, status, total_pages, page_num = update_jobs_view(table_name, 1, "", "all")
+-            return gr.update(choices=job_types, value=table_name), df, status, total_pages, page_num
++            # If job_types is empty, set value to None to prevent Gradio error
++            initial_value = job_types[0] if job_types else None
++            df, status, total_pages, page_num = update_jobs_view(initial_value, 1, "", "all")
++            return gr.update(choices=job_types, value=initial_value), df, status, total_pages, page_num
+ 
+         def on_search_change(table_name, search_term, status_filter):
+             return update_jobs_view(table_name, 1, search_term, status_filter)
+diff --git a/verifier/main.py b/verifier/main.py
+index afc223b..27f6740 100644
+--- a/verifier/main.py
++++ b/verifier/main.py
+@@ -11,38 +11,9 @@ import sys
+ # Add the parent directory to the Python path to allow importing the 'api' module.
+ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+ 
+-from api import database, logic
++from api import database, logic, verification
+ 
+-def get_postgres_connection():
+-    """Establishes a connection to the PostgreSQL database."""
+-    return psycopg2.connect(
+-        dbname=os.getenv("POSTGRES_DB", "postgres"),
+-        user=os.getenv("POSTGRES_USER", "postgres"),
+-        password=os.getenv("POSTGRES_PASSWORD", "postgres"),
+-        host=os.getenv("POSTGRES_HOST", "localhost"),
+-        port=os.getenv("POSTGRES_PORT", "5432"),
+-    )
+ 
+-def verify_procedure(converted_sql: str):
+-    """
+-    Tries to execute a converted SQL procedure against the PostgreSQL database.
+-
+-    Args:
+-        converted_sql: The SQL procedure to verify.
+-
+-    Returns:
+-        A tuple of (bool, str) indicating success and an error message (if any).
+-    """
+-    try:
+-        with get_postgres_connection() as conn:
+-            with conn.cursor() as cursor:
+-                # We wrap the execution in a transaction that we can roll back.
+-                cursor.execute("BEGIN;")
+-                cursor.execute(converted_sql)
+-                cursor.execute("ROLLBACK;")
+-        return True, None
+-    except psycopg2.Error as e:
+-        return False, str(e)
+ 
+ def process_job(job):
+     """Processes a single conversion job."""
+@@ -57,7 +28,7 @@ def process_job(job):
+             raise ValueError(f"Unknown job type: {job['job_type']}")
+ 
+         # 2. Verify the converted SQL
+-        is_valid, error_message = verify_procedure(converted_sql)
++                is_valid, error_message, _ = verification.verify_procedure(converted_sql)
+ 
+         if is_valid:
+             print(f"Job {job['job_id']} verified successfully.")
+@@ -74,7 +45,7 @@ def process_job(job):
+                 raise ValueError(f"Unknown job type: {job['job_type']}")
+             
+             # 4. Re-verify the corrected SQL
+-            is_valid, error_message = verify_procedure(corrected_sql)
++                        is_valid, error_message, _ = verification.verify_procedure(corrected_sql)
+             if is_valid:
+                 print(f"Job {job['job_id']} auto-corrected and verified successfully.")
+                 database.update_job_status(job['job_id'], 'verified', corrected_sql)
+diff --git a/worker.py b/worker.py
+index 5ebe897..e6f5dee 100644
+--- a/worker.py
++++ b/worker.py
+@@ -17,8 +17,9 @@ from contextlib import contextmanager # Import contextmanager
+ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+ 
+ WORKER_ID = str(uuid.uuid4())[:8]
+-from api import database, queues, ai_converter, migration_db, schema_comparer
++from api import database, queues, ai_converter, migration_db, schema_comparer, verification
+ from api.database import get_db_connection, get_verification_db_connection # Import new context managers
++from api.verification import verify_procedure, verify_procedure_with_creds
+ 
+ # --- Existing SQL Conversion Feature ---
+ 
+@@ -41,7 +42,10 @@ def callback(ch, method, properties, body):
+         print(f" [x] Processed DDL job {job_id}")
+         return
+ 
+-    update_status_func = database.update_job_status
++    if job_type == 'ddl':
++        update_status_func = database.update_ddl_job_status
++    else:
++        update_status_func = database.update_job_status
+ 
+     try:
+         print(f" [x] Received job {job_id}")
+@@ -54,7 +58,7 @@ def callback(ch, method, properties, body):
+             raise ValueError(f"Unknown job type: {job_type}")
+ 
+         with get_verification_db_connection() as verification_conn:
+-            is_valid, error_message, _ = verify_procedure(converted_sql, conn=verification_conn)
++            is_valid, error_message, _ = verification.verify_procedure(converted_sql)
+ 
+             if is_valid:
+                 print(f"Job {job_id} verified successfully.")
+@@ -69,7 +73,7 @@ def callback(ch, method, properties, body):
+                 else:
+                     raise ValueError(f"Unknown job type: {job_type}")
+                 
+-                is_valid, error_message, _ = verify_procedure(corrected_sql, conn=verification_conn)
++                is_valid, error_message, _ = verification.verify_procedure(corrected_sql)
+                 if is_valid:
+                     print(f"Job {job_id} auto-corrected and verified successfully.")
+                     update_status_func(job_id, 'verified', corrected_sql)
+@@ -134,19 +138,22 @@ def data_migration_callback(ch, method, properties, body):
+                 break
+             
+             for row_data in chunk:
+-                row_message = {
+-                    "job_id": str(job_id),
+-                    "row_data": list(row_data), # Convert tuple to list for JSON serialization
+-                    "column_names": column_names
+-                }
+-                queues.get_rabbitmq_connection().channel().basic_publish(
+-                    exchange='',
+-                    routing_key=queues.QUEUE_CONFIG['DATA_MIGRATION_ROW']['queue'],
+-                    body=json.dumps(row_message),
+-                    properties=pika.BasicProperties(delivery_mode=2)
+-                )
+-                rows_processed += 1
+-            
++                try:
++                    row_message = {
++                        "job_id": str(job_id),
++                        "row_data": list(row_data), # Convert tuple to list for JSON serialization
++                        "column_names": column_names
++                    }
++                    queues.get_rabbitmq_connection().channel().basic_publish(
++                        exchange='',
++                        routing_key=queues.QUEUE_CONFIG['DATA_MIGRATION_ROW']['queue'],
++                        body=json.dumps(row_message),
++                        properties=pika.BasicProperties(delivery_mode=2)
++                    )
++                    rows_processed += 1
++                except Exception as e:
++                    print(f" [!] Error publishing row to queue for job {job_id}: {e}")
++
+             migration_db.update_migration_job_status(job_id, "RUNNING", migrated_rows=rows_processed)
+ 
+         migration_db.update_migration_job_status(job_id, "COMPLETED", migrated_rows=rows_processed)
+@@ -253,14 +260,14 @@ def sql_execution_callback(ch, method, properties, body):
+         if is_verification:
+             print(f" [x] Job {job_id}: Using verification database for execution.")
+             with get_verification_db_connection() as conn:
+-                overall_success, overall_error_message, statement_results = verify_procedure(sanitized_sql_statements, conn=conn)
++                overall_success, overall_error_message, statement_results = verification.verify_procedure(sanitized_sql_statements, conn=conn)
+         elif pg_creds:
+             print(f" [x] Job {job_id}: Using provided credentials for execution.")
+-            overall_success, overall_error_message, statement_results = verify_procedure_with_creds(sanitized_sql_statements, pg_creds)
++            overall_success, overall_error_message, statement_results = verification.verify_procedure_with_creds(sanitized_sql_statements, pg_creds)
+         else:
+             print(f" [x] Job {job_id}: Using default database for execution.")
+             with get_db_connection() as conn:
+-                overall_success, overall_error_message, statement_results = verify_procedure(sanitized_sql_statements, conn=conn)
++                overall_success, overall_error_message, statement_results = verification.verify_procedure(sanitized_sql_statements, conn=conn)
+ 
+         if overall_success:
+             print(f"Job {job_id} executed successfully.")
+@@ -274,62 +281,8 @@ def sql_execution_callback(ch, method, properties, body):
+     except Exception as e:
+         print(f" [!] Job {job_id} failed critically: {e}. Re-queueing for retry.")
+         database.update_sql_execution_job_status(job_id, 'failed', str(e), statement_results if 'statement_results' in locals() else [])
+-        ch.basic_reject(delivery_tag=method.delivery_tag, requeue=True) # Re-queue for retry
+-
+-
+-# --- Common and Verification Functions ---
++        ch.basic_reject(delivery_tag=method.delivery_tag, requeue=True) # Re-queue for retry)
+ 
+-def verify_procedure(sql_content: str | list[str], conn=None) -> tuple[bool, Optional[str], list[dict]]:
+-    """Tries to execute SQL content (string or list of statements) against a PostgreSQL database, using an optional connection."""
+-    all_results = []
+-    overall_success = True
+-    overall_error_message = None
+-
+-    if isinstance(sql_content, str):
+-        statements_to_execute = [str(s).strip() for s in sqlparse.parse(sql_content) if str(s).strip()]
+-    else:
+-        statements_to_execute = sql_content
+-
+-    connection_context = get_db_connection() if conn is None else contextmanager(lambda: (yield conn))()
+-    with connection_context as current_conn:
+-        try:
+-            print("Connection successful.")
+-            with current_conn.cursor() as cursor:
+-                print(f"Found {len(statements_to_execute)} statements to execute.")
+-                for i, statement_str in enumerate(statements_to_execute):
+-                    statement_result = {
+-                        'statement': statement_str,
+-                        'status': 'pending',
+-                        'error': None
+-                    }
+-                    if statement_str:
+-                        try:
+-                            print(f"Executing statement {i+1}: {statement_str[:100]}...")
+-                            cursor.execute(statement_str)
+-                            statement_result['status'] = 'success'
+-                        except psycopg2.Error as e:
+-                            print(f"Error executing statement {i+1}: {e}")
+-                            statement_result['status'] = 'failed'
+-                            statement_result['error'] = str(e)
+-                            overall_success = False
+-                            if not overall_error_message: # Store the first error as overall error
+-                                overall_error_message = str(e)
+-                    all_results.append(statement_result)
+-                
+-                if overall_success:
+-                    print("Committing the transaction...")
+-                    current_conn.commit()
+-                    print("Transaction committed.")
+-                else:
+-                    print("Transaction failed, rolling back...")
+-                    current_conn.rollback()
+-                    print("Transaction rolled back.")
+-            return overall_success, overall_error_message, all_results
+-        except psycopg2.Error as e:
+-            print(f"Error during transaction: {e}")
+-            current_conn.rollback()
+-            print("Transaction rolled back due to transaction error.")
+-            return False, str(e), all_results # Return current results even if connection fails
+ 
+ 
+ # --- Main Application Setup ---

@@ -1,0 +1,77 @@
+.migration-pipelines-container {
+    padding: 20px;
+    max-width: 800px;
+    margin: 0 auto;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.migration-pipelines-container h2 {
+    color: #333;
+    margin-bottom: 15px;
+}
+
+.migration-pipelines-container p {
+    color: #666;
+    margin-bottom: 20px;
+}
+
+.migration-summary {
+    background-color: #e9e9e9;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+.migration-summary h3 {
+    color: #555;
+    margin-bottom: 5px;
+}
+
+.migration-summary p {
+    margin-bottom: 5px;
+}
+
+.object-list {
+    list-style: none;
+    padding: 0;
+    margin-bottom: 20px;
+}
+
+.object-list li {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.kickoff-button {
+    background-color: #007bff;
+    color: white;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s ease;
+}
+
+.kickoff-button:hover {
+    background-color: #0056b3;
+}
+
+.kickoff-button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+.stage-skipped {
+    background-color: #f0f0f0; /* Light grey for skipped */
+    border-color: #ccc;
+    color: #666;
+}

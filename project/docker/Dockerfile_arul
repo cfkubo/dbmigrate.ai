@@ -1,0 +1,22 @@
+FROM --platform=arm64 python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install system dependencies required for building Python packages and PostgreSQL client libs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    libpq-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pip and setuptools
+RUN pip install --upgrade pip setuptools
+# Install project dependencies excluding 'ollama' as per project constraint
+# Copy requirements and install, but exclude 'ollama' per project constraint
+COPY ../requirements.txt  /tmp/requirements.txt
+RUN grep -v -i '^\s*ollama' /tmp/requirements.txt | sed '/^\s*$/d' > /tmp/requirements_no_ollama.txt \
+    && pip install --no-cache-dir -r /tmp/requirements_no_ollama.txt    

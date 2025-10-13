@@ -1,0 +1,31 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+        endpoint: "0.0.0.0:4318" # Collector listens for OTLP over HTTP/gRPC
+
+processors:
+  batch:
+
+exporters:
+  otlp: # Changed from jaeger to otlp
+    endpoint: jaeger:4317 # Jaeger OTLP gRPC endpoint
+    tls:
+      insecure: true # Use insecure for local setup if not using TLS
+
+  prometheus:
+    endpoint: "0.0.0.0:8889" # Collector exposes its own metrics here
+
+connectors:
+  spanmetrics:
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp, spanmetrics] # Send traces to Jaeger and spanmetrics connector
+    metrics/spanmetrics:
+      receivers: [spanmetrics]
+      exporters: [prometheus] # Send spanmetrics to Prometheus
