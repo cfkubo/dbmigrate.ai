@@ -315,7 +315,7 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 
 ### Project WebUI Screnshots
 
-![demo0](assests/react.png)
+![demo0](assets/react.png)
 
 
 ![demo1](assets/demo2.png)
