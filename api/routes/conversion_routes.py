@@ -37,7 +37,7 @@ async def convert_oracle_to_postgres(conversion_input: models.ConversionInput):
     try:
         channel = connection.channel()
         for proc in procedures:
-            job_id = database.create_job(proc, job_type)
+            job_id = database.create_job(job_type=job_type, original_sql=proc)
             job_ids.append(job_id)
             carrier = {}
             inject(carrier)
@@ -74,7 +74,7 @@ async def convert_oracle_to_postgres_file(file: UploadFile = File(...)):
     try:
         channel = connection.channel()
         for proc in procedures:
-            job_id = database.create_job(proc, job_type)
+            job_id = database.create_job(job_type=job_type, original_sql=proc)
             job_ids.append(job_id)
             carrier = {}
             inject(carrier)

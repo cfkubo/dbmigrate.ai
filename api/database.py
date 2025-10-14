@@ -26,6 +26,7 @@ from api.job_repository import (
     get_job,
     update_job_status,
     get_pending_jobs,
+    get_verified_by_worker_jobs,
     create_data_migration_job,
     update_data_migration_job_status,
     log_migration_row_status,
@@ -34,6 +35,7 @@ from api.job_repository import (
     get_sql_execution_job,
     update_sql_execution_job_status,
     get_all_child_job_statuses,
+    get_jobs_by_ids,
 )
 
 from api.postgres_utils import (

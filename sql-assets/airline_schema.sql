@@ -7,7 +7,7 @@ CREATE TABLE Countries (
     country_id NUMBER(2) PRIMARY KEY,
     country_name VARCHAR2(100) NOT NULL
 );
-
+/
 -- Airports Table
 CREATE TABLE Airports (
     airport_id NUMBER(3) PRIMARY KEY,
@@ -16,14 +16,14 @@ CREATE TABLE Airports (
     country_id NUMBER(2) NOT NULL,
     CONSTRAINT fk_airports_country FOREIGN KEY (country_id) REFERENCES Countries(country_id)
 );
-
+/
 -- Airlines Table
 CREATE TABLE Airlines (
     airline_id NUMBER PRIMARY KEY,
     airline_name VARCHAR2(100) NOT NULL,
     iata_code VARCHAR2(2) UNIQUE
 );
-
+/
 -- Aircraft Table
 CREATE TABLE Aircraft (
     aircraft_id NUMBER PRIMARY KEY,
@@ -32,7 +32,7 @@ CREATE TABLE Aircraft (
     capacity NUMBER NOT NULL,
     CONSTRAINT fk_aircraft_airline FOREIGN KEY (airline_id) REFERENCES Airlines(airline_id)
 );
-
+/
 -- Flights Table
 CREATE TABLE Flights (
     flight_id NUMBER PRIMARY KEY,
@@ -49,7 +49,7 @@ CREATE TABLE Flights (
     CONSTRAINT fk_flights_dep_airport FOREIGN KEY (departure_airport_id) REFERENCES Airports(airport_id),
     CONSTRAINT fk_flights_arr_airport FOREIGN KEY (arrival_airport_id) REFERENCES Airports(airport_id)
 );
-
+/
 -- Passengers Table
 CREATE TABLE Passengers (
     passenger_id NUMBER PRIMARY KEY,
@@ -59,7 +59,7 @@ CREATE TABLE Passengers (
     phone_number VARCHAR2(20),
     passport_number VARCHAR2(20) UNIQUE
 );
-
+/
 -- Bookings Table
 CREATE TABLE Bookings (
     booking_id NUMBER PRIMARY KEY,
@@ -71,7 +71,7 @@ CREATE TABLE Bookings (
     CONSTRAINT fk_bookings_flight FOREIGN KEY (flight_id) REFERENCES Flights(flight_id),
     CONSTRAINT fk_bookings_passenger FOREIGN KEY (passenger_id) REFERENCES Passengers(passenger_id)
 );
-
+/
 -- Boarding_Passes Table
 CREATE TABLE Boarding_Passes (
     boarding_pass_id NUMBER PRIMARY KEY,
@@ -80,7 +80,7 @@ CREATE TABLE Boarding_Passes (
     boarding_time TIMESTAMP,
     CONSTRAINT fk_boarding_passes_booking FOREIGN KEY (booking_id) REFERENCES Bookings(booking_id)
 );
-
+/
 -- Employees Table
 CREATE TABLE Employees (
     employee_id NUMBER PRIMARY KEY,
@@ -88,7 +88,7 @@ CREATE TABLE Employees (
     last_name VARCHAR2(100) NOT NULL,
     role VARCHAR2(50) NOT NULL -- e.g., 'Pilot', 'Cabin Crew', 'Ground Staff'
 );
-
+/
 -- Flight_Crew Table
 CREATE TABLE Flight_Crew (
     flight_crew_id NUMBER PRIMARY KEY,
@@ -98,3 +98,4 @@ CREATE TABLE Flight_Crew (
     CONSTRAINT fk_flight_crew_flight FOREIGN KEY (flight_id) REFERENCES Flights(flight_id),
     CONSTRAINT fk_flight_crew_employee FOREIGN KEY (employee_id) REFERENCES Employees(employee_id)
 );
+/

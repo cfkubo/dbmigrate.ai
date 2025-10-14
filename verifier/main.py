@@ -19,29 +19,17 @@ def process_job(job):
     """Processes a single conversion job."""
     print(f"Processing job: {job['job_id']}")
     try:
-        # 1. Convert the original SQL
-        converted_sql = "".join(ai_converter.convert_oracle_to_postgres(job['original_sql']))
+        converted_sql = job['converted_sql']
 
-        # 2. Verify the converted SQL
+        # Verify the converted SQL
         is_valid, error_message, _ = verification.verify_procedure(converted_sql)
 
         if is_valid:
             print(f"Job {job['job_id']} verified successfully.")
-            database.update_job_status(job['job_id'], 'verified', converted_sql)
+            database.update_job_status(job['job_id'], 'verified', converted_sql=converted_sql)
         else:
             print(f"Job {job['job_id']} failed verification: {error_message}")
-            # 3. Try to self-correct with the LLM
-            correction_prompt = f"The following PostgreSQL code failed with the error: {error_message}. Please fix it.\n\n{converted_sql}"
-            corrected_sql = "".join(ai_converter.convert_oracle_to_postgres(correction_prompt))
-            
-            # 4. Re-verify the corrected SQL
-            is_valid, error_message, _ = verification.verify_procedure(corrected_sql)
-            if is_valid:
-                print(f"Job {job['job_id']} auto-corrected and verified successfully.")
-                database.update_job_status(job['job_id'], 'verified', corrected_sql)
-            else:
-                print(f"Job {job['job_id']} failed auto-correction.")
-                database.update_job_status(job['job_id'], 'failed', corrected_sql, error_message)
+            database.update_job_status(job['job_id'], 'failed', converted_sql=converted_sql, error_message=error_message)
 
     except Exception as e:
         print(f"An unexpected error occurred while processing job {job['job_id']}: {e}")
@@ -81,7 +69,7 @@ def main():
         database.execute_sql_from_file(conn, "sql-assets/migration_jobs_schema.sql")
 
     while True:
-        jobs = database.get_pending_jobs()
+        jobs = database.get_verified_by_worker_jobs()
         if not jobs:
             print("No pending jobs found. Waiting...")
             time.sleep(10)

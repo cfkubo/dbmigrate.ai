@@ -1,9 +1,32 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom'; // Import useLocation and useNavigate
-// import './DatabaseSelection.css'; // This CSS will be removed or refactored
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as apiClient from './api_client';
 import ObjectSelection from './ObjectSelection';
-import ObjectTypeSelector from './ObjectTypeSelector'; // Import the new component
+import ObjectTypeSelector from './ObjectTypeSelector';
+import {
+  Box,
+  Paper,
+  Typography,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Button,
+  Alert,
+  LinearProgress,
+  Card,
+  CardContent,
+  Grid,
+  Chip,
+  Stepper,
+  Step,
+  StepLabel
+} from '@mui/material';
+import {
+  CheckCircleOutline as CheckIcon,
+  Error as ErrorIcon,
+  Storage as StorageIcon
+} from '@mui/icons-material';
 import './MigrationWorkflow.css';
 
 function MigrationWorkflow() {
@@ -109,58 +132,163 @@ function MigrationWorkflow() {
 
   const isButtonDisabled = !selectedSourceSchema || objectListingStatus.startsWith('Error') || !targetConnectionStatus.startsWith('Connected') || oracleObjects.length === 0 || selectedObjectsForMigration.length === 0;
 
+  const steps = ['Connect Databases', 'Select Schema', 'Choose Objects', 'Build Pipeline'];
+  const activeStep = useMemo(() => {
+    if (!sourceDbType || !targetConnectionStatus.startsWith('Connected')) return 0;
+    if (!selectedSourceSchema) return 1;
+    if (selectedObjectsForMigration.length === 0) return 2;
+    return 3;
+  }, [sourceDbType, targetConnectionStatus, selectedSourceSchema, selectedObjectsForMigration]);
+
   return (
-    <div className="migration-workflow-container">
-      <h2>Migration Workflow</h2>
+    <Box sx={{ maxWidth: 1200, margin: '0 auto', p: 3 }}>
+      <Typography variant="h4" gutterBottom>
+        Migration Workflow
+      </Typography>
 
-      {/* Source Database Details (Oracle) - Simplified */}
-      <div className="selection-group">
-        <label>Source Database: {sourceDbType ? sourceDbType.charAt(0).toUpperCase() + sourceDbType.slice(1) : 'N/A'}</label>
-        {sourceConnectionDetails && <p>Connected to {sourceConnectionDetails.host}:{sourceConnectionDetails.port}</p>}
-      </div>
+      <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+        {steps.map((label) => (
+          <Step key={label}>
+            <StepLabel>{label}</StepLabel>
+          </Step>
+        ))}
+      </Stepper>
 
-      {sourceSchemas.length > 0 && (
-        <div className="selection-group">
-          <label htmlFor="source-schema">Select Schema:</label>
-          <select id="source-schema" value={selectedSourceSchema} onChange={(e) => setSelectedSourceSchema(e.target.value)}>
-            {sourceSchemas.map((schema) => (
-              <option key={schema} value={schema}>{schema}</option>
-            ))}
-          </select>
-        </div>
+      <Grid container spacing={3}>
+        {/* Source Database Card */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <StorageIcon sx={{ mr: 1 }} />
+                Source Database ({sourceDbType ? sourceDbType.charAt(0).toUpperCase() + sourceDbType.slice(1) : 'N/A'})
+              </Typography>
+              
+              {sourceConnectionDetails && (
+                <Chip
+                  icon={<CheckIcon />}
+                  label={`Connected to ${sourceConnectionDetails.host}:${sourceConnectionDetails.port}`}
+                  color="success"
+                  variant="outlined"
+                  sx={{ mb: 2 }}
+                />
+              )}
+
+              {sourceSchemas.length > 0 && (
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Select Schema</InputLabel>
+                  <Select
+                    value={selectedSourceSchema}
+                    onChange={(e) => setSelectedSourceSchema(e.target.value)}
+                    label="Select Schema"
+                  >
+                    {sourceSchemas.map((schema) => (
+                      <MenuItem key={schema} value={schema}>{schema}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+
+              {selectedSourceSchema && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Object Type
+                  </Typography>
+                  <ObjectTypeSelector
+                    objectTypes={sourceObjectTypes}
+                    selectedObjectType={selectedObjectType}
+                    onSelectObjectType={setSelectedObjectType}
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={handleListOracleObjects}
+                    sx={{ mt: 2 }}
+                    fullWidth
+                  >
+                    List Objects
+                  </Button>
+                  {objectListingStatus && (
+                    <Alert 
+                      severity={objectListingStatus.includes('Error') ? 'error' : 
+                               objectListingStatus.includes('Listing') ? 'info' : 'success'}
+                      sx={{ mt: 2 }}
+                    >
+                      {objectListingStatus}
+                    </Alert>
+                  )}
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Target Database Card */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <StorageIcon sx={{ mr: 1 }} />
+                Target Database ({targetDbType.charAt(0).toUpperCase() + targetDbType.slice(1)})
+              </Typography>
+
+              {targetConnectionDetails && (
+                <Chip
+                  icon={targetConnectionStatus.startsWith('Connected') ? <CheckIcon /> : <ErrorIcon />}
+                  label={`${targetConnectionDetails.host}:${targetConnectionDetails.port}`}
+                  color={targetConnectionStatus.startsWith('Connected') ? 'success' : 'error'}
+                  variant="outlined"
+                  sx={{ mb: 2 }}
+                />
+              )}
+
+              {targetConnectionStatus && (
+                <Alert 
+                  severity={targetConnectionStatus.startsWith('Connected') ? 'success' : 'error'}
+                >
+                  {targetConnectionStatus}
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Object Selection */}
+        {oracleObjects.length > 0 && (
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Select Objects for Migration
+              </Typography>
+              <ObjectSelection
+                objects={oracleObjects}
+                selectedObjectType={selectedObjectType}
+                onObjectSelect={handleObjectSelection}
+              />
+            </Paper>
+          </Grid>
+        )}
+      </Grid>
+
+      {/* Bottom Action Bar */}
+      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleBuildPipelines}
+          disabled={isButtonDisabled}
+          size="large"
+        >
+          Build Migration Pipeline
+        </Button>
+      </Box>
+
+      {/* Progress Indicator */}
+      {objectListingStatus.includes('Listing') && (
+        <Box sx={{ width: '100%', mt: 2 }}>
+          <LinearProgress />
+        </Box>
       )}
-      {selectedSourceSchema && (
-        <div className="selection-group">
-          <label>Object Type:</label>
-          <ObjectTypeSelector
-            objectTypes={sourceObjectTypes}
-            selectedObjectType={selectedObjectType}
-            onSelectObjectType={setSelectedObjectType}
-          />
-          <button onClick={handleListOracleObjects}>List Objects</button>
-          <p className="connection-status">{objectListingStatus}</p>
-        </div>
-      )}
-
-      {/* Target Database Details (PostgreSQL) - Simplified */}
-      <div className="selection-group">
-        <label>Target Database: {targetDbType.charAt(0).toUpperCase() + targetDbType.slice(1)}</label>
-        {targetConnectionDetails && <p>Connected to {targetConnectionDetails.host}:{targetConnectionDetails.port}</p>}
-        <p className="connection-status">Target Status: {targetConnectionStatus}</p>
-      </div>
-
-      {oracleObjects.length > 0 && (
-        <ObjectSelection
-          objects={oracleObjects}
-          selectedObjectType={selectedObjectType}
-          onObjectSelect={handleObjectSelection}
-        />
-      )}
-
-      <button onClick={handleBuildPipelines} disabled={isButtonDisabled}>
-        Build Pipelines for Migration
-      </button>
-    </div>
+    </Box>
   );
 }
 

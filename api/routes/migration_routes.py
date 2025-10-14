@@ -43,7 +43,8 @@ def initiate_migration_workflow(migration_details: models.MigrationDetails):
                 target_schema=migration_details.target_schema,
                 source_connection_details=migration_details.source_connection.dict(),
                 target_connection_details=migration_details.target_connection.dict() if migration_details.target_connection else None,
-                data_migration_enabled=migration_details.data_migration_enabled
+                data_migration_enabled=migration_details.data_migration_enabled,
+                original_sql=obj.original_sql # Pass original_sql from the MigrationObject
             )
 
             extraction_message = {
@@ -191,30 +192,11 @@ def get_migration_status(job_id: str):
 
         child_jobs_status = database.get_all_child_job_statuses(job_id)
 
-        # Aggregate child job statuses into a more consumable format for the frontend
-        # This structure should match what the frontend's MigrationPipelines.js expects
-        aggregated_child_status = []
-        for child_job in child_jobs_status:
-            # Determine the stage based on the table it came from
-            stage = child_job["stage"]
-            
-            aggregated_child_status.append({
-                "job_id": str(child_job["job_id"]),
-                "object_type": child_job.get("object_type", "unknown"),
-                "object_name": child_job.get("object_name", child_job.get("source_table_name", "unknown")),
-                "stage": stage,
-                "status": child_job["status"],
-                "error_message": child_job.get("error_message") or child_job.get("error_details"),
-                "extracted_ddl": child_job.get("extracted_ddl"),
-                "converted_ddl": child_job.get("converted_sql"),
-                # Add other relevant fields as needed by the frontend
-            })
-
         return {
             "job_id": str(parent_job["job_id"]),
             "status": parent_job["status"],
             "error_message": parent_job.get("error_message"),
-            "child_jobs": aggregated_child_status
+            "child_jobs": child_jobs_status
         }
     except Exception as e:
         logger.error(f"Error checking migration job status for {job_id}: {e}", exc_info=True)

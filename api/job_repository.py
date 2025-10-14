@@ -191,13 +191,18 @@ def create_job(
         logger.info(f"Stored job_id {job_id} with trace_id {trace_id} in Valkey.")
 
         # Construct the INSERT statement dynamically based on provided arguments
-        columns = ["job_id", "status", "job_type"]
-        values = [job_id, 'pending', job_type]
-        placeholders = ["%s", "%s", "%s"]
+        columns = ["job_id", "status", "job_type", "extraction_status", "conversion_status", "execution_status", "data_migration_status"]
+        values = [job_id, 'pending', job_type, 'pending', 'pending', 'pending', 'pending']
+        placeholders = ["%s", "%s", "%s", "%s", "%s", "%s", "%s"]
 
-        columns.append("original_sql")
-        values.append(original_sql if original_sql is not None else "") # Provide empty string if None
-        placeholders.append("%s")
+        if original_sql is not None:
+            columns.append("original_sql")
+            values.append(original_sql)
+            placeholders.append("%s")
+        else:
+            columns.append("original_sql")
+            values.append("") # Default to empty string if not provided
+            placeholders.append("%s")
 
         if parent_job_id is not None:
             columns.append("parent_job_id")
@@ -261,7 +266,7 @@ def get_jobs_by_ids(job_ids: List[str]) -> List[Dict]:
         # Note: execute_values is typically for INSERT/UPDATE. For SELECT with IN,
         # it's more common to use a single %s with a tuple of values.
         # Let's adjust this to the more standard approach for SELECT IN.
-        query = "SELECT * FROM migration_jobs.jobs WHERE job_id = ANY(%s)"
+        query = "SELECT * FROM migration_jobs.jobs WHERE job_id = ANY(%s::uuid[])"
         cursor.execute(query, (job_ids,))
         jobs = cursor.fetchall()
         column_names = [desc[0] for desc in cursor.description]
@@ -277,12 +282,18 @@ def update_job_status(job_id, status, original_sql=None, converted_sql=None, err
         update_fields = ["status = %s"]
         update_values = [status]
 
-        if original_sql is not None:
-            update_fields.append("original_sql = %s")
-            update_values.append(original_sql)
-        if converted_sql is not None:
-            update_fields.append("converted_sql = %s")
-            update_values.append(converted_sql)
+        if status == 'verified':
+            if converted_sql is not None:
+                update_fields.append("converted_sql = %s")
+                update_values.append(converted_sql)
+        else:
+            if original_sql is not None:
+                update_fields.append("original_sql = %s")
+                update_values.append(original_sql)
+            if converted_sql is not None:
+                update_fields.append("converted_sql = %s")
+                update_values.append(converted_sql)
+
         if error_message is not None:
             update_fields.append("error_message = %s")
             update_values.append(error_message)
@@ -294,70 +305,96 @@ def update_job_status(job_id, status, original_sql=None, converted_sql=None, err
         conn.commit()
         cursor.close()
 
-def get_all_child_job_statuses(parent_job_id: str) -> List[Dict]:
-    logger.debug(f"Fetching all child job statuses for parent_job_id: {parent_job_id}")
-    all_child_jobs_status = []
+def update_child_job_stage_status(job_id: str, stage_name: str, status: str, error_message: Optional[str] = None, converted_ddl: Optional[str] = None):
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        update_fields = [f"{stage_name}_status = %s"]
+        update_values = [status]
 
-        # Fetch child jobs from the main 'jobs' table (these are extraction/conversion jobs)
-        logger.info(f"parent_job_id: {parent_job_id}, type: {type(parent_job_id)}")
-        cursor.execute(
-            """
-            SELECT job_id, job_type, object_type, object_name, status, error_message, original_sql, converted_sql
-            FROM migration_jobs.jobs
-            WHERE parent_job_id = %s
-            """,
-            (str(parent_job_id),)
-        )
-        jobs_from_main_table = cursor.fetchall()
-        column_names = [desc[0] for desc in cursor.description]
-        for job in jobs_from_main_table:
-            job_dict = dict(zip(column_names, job))
-            # Determine stage based on job_type for frontend display
-            if job_dict["job_type"].endswith("_extraction"):
-                job_dict["stage"] = "extraction"
-            elif job_dict["job_type"].endswith("_conversion"):
-                job_dict["stage"] = "conversion"
-            else:
-                job_dict["stage"] = "unknown"
-            all_child_jobs_status.append(_convert_uuids_to_strings(job_dict))
+        if error_message is not None:
+            update_fields.append("error_message = %s")
+            update_values.append(error_message)
+        if converted_ddl is not None:
+            update_fields.append("converted_sql = %s") # Assuming converted_sql stores the DDL
+            update_values.append(converted_ddl)
+        
+        update_values.append(job_id) # Add job_id for WHERE clause
 
-        # Fetch child jobs from sql_execution_jobs table
-        # These are linked by job_id which is the same as the extraction/conversion job_id
-        subquery_sql_execution = SQL("SELECT job_id FROM migration_jobs.jobs WHERE parent_job_id = {} AND job_type LIKE '%_execution'").format(
-            Literal(str(parent_job_id))
-        )
-        main_query_sql_execution = SQL("""
-            SELECT job_id, filename, status, error_message, statement_results
-            FROM migration_jobs.sql_execution_jobs
-            WHERE job_id IN ({})
-            """).format(subquery_sql_execution)
-        cursor.execute(main_query_sql_execution)
-        sql_execution_jobs = cursor.fetchall()
-        column_names = [desc[0] for desc in cursor.description]
-        for job in sql_execution_jobs:
-            job_dict = dict(zip(column_names, job))
-            job_dict["stage"] = "sql_execution"
-            all_child_jobs_status.append(_convert_uuids_to_strings(job_dict))
+        query = f"UPDATE migration_jobs.jobs SET {', '.join(update_fields)} WHERE job_id = %s"
+        cursor.execute(query, tuple(update_values))
+        conn.commit()
+        cursor.close()
 
-        # Fetch child jobs from data_migration_jobs table
-        # These are linked by job_id which is the same as the extraction/conversion job_id
-        subquery_data_migration = SQL("SELECT job_id FROM migration_jobs.jobs WHERE parent_job_id = {} AND job_type LIKE '%_data_migration'").format(
-            Literal(str(parent_job_id))
-        )
-        main_query_data_migration = SQL("""
-            SELECT job_id, source_table_name, target_table_name, status, total_rows, migrated_rows, error_details
-            FROM migration_jobs.data_migration_jobs
-            WHERE job_id IN ({})
-        """).format(subquery_data_migration)
-        cursor.execute(main_query_data_migration)
-        data_migration_jobs = cursor.fetchall()
-        column_names = [desc[0] for desc in cursor.description]
-        for job in data_migration_jobs:
-            job_dict = dict(zip(column_names, job))
-            job_dict["stage"] = "data_migration"
-            all_child_jobs_status.append(_convert_uuids_to_strings(job_dict))
+def get_all_child_job_statuses(parent_job_id: str) -> List[Dict]:
+    all_child_jobs_status = []
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+        query = """
+            SELECT
+                mj.job_id,
+                mj.job_type,
+                mj.object_type,
+                mj.object_name,
+                mj.status AS overall_status,
+                mj.error_message AS overall_error_message,
+                mj.original_sql,
+                mj.converted_sql,
+                mj.extraction_status,
+                mj.conversion_status,
+                mj.execution_status AS job_execution_status,
+                mj.data_migration_status AS job_data_migration_status,
+                sej.status AS sql_execution_status,
+                sej.error_message AS sql_execution_error_message,
+                dmj.status AS data_migration_status,
+                dmj.error_details AS data_migration_error_details
+            FROM
+                migration_jobs.jobs mj
+            LEFT JOIN
+                migration_jobs.sql_execution_jobs sej ON mj.job_id = sej.job_id
+            LEFT JOIN
+                migration_jobs.data_migration_jobs dmj ON mj.job_id = dmj.job_id
+            WHERE
+                mj.parent_job_id = %s
+        """
+        cursor.execute(query, (str(parent_job_id),))
+        jobs_data = cursor.fetchall()
+
+        for job in jobs_data:
+            job_dict = dict(job)
+            
+            # Aggregate statuses, prioritizing specific job table statuses if available
+            # For execution, if sql_execution_status is available, use it, otherwise use job_execution_status
+            execution_status = job_dict["sql_execution_status"] if job_dict["sql_execution_status"] else job_dict["job_execution_status"]
+            execution_error = job_dict["sql_execution_error_message"] if job_dict["sql_execution_error_message"] else None
+
+            # For data migration, if data_migration_status is available, use it, otherwise use job_data_migration_status
+            data_migration_status = job_dict["data_migration_status"] if job_dict["data_migration_status"] else job_dict["job_data_migration_status"]
+            data_migration_error = job_dict["data_migration_error_details"] if job_dict["data_migration_error_details"] else None
+
+            # Consolidate error messages
+            error_message = job_dict["overall_error_message"]
+            if data_migration_error:
+                if error_message:
+                    error_message += f"; Data Migration Error: {json.dumps(data_migration_error)}"
+                else:
+                    error_message = f"Data Migration Error: {json.dumps(data_migration_error)}"
+
+            all_child_jobs_status.append({
+                "job_id": str(job_dict["job_id"]),
+                "object_type": job_dict.get("object_type", "unknown"),
+                "object_name": job_dict.get("object_name", "unknown"),
+                "status": job_dict["overall_status"], # Overall status of the child job
+                "error_message": error_message,
+                "original_sql": job_dict["original_sql"] or "",
+                "converted_ddl": job_dict["converted_sql"],
+                "extraction_status": job_dict["extraction_status"],
+                "conversion_status": job_dict["conversion_status"],
+                "execution_status": execution_status,
+                "execution_error": execution_error,
+                "data_migration_status": data_migration_status,
+                "data_migration_error": data_migration_error,
+            })
 
         cursor.close()
     return all_child_jobs_status
@@ -424,6 +461,14 @@ def get_pending_jobs():
     with get_db_connection() as conn:
         cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cursor.execute("SELECT * FROM migration_jobs.jobs WHERE status = 'pending'")
+        jobs = cursor.fetchall()
+        cursor.close()
+        return jobs
+
+def get_verified_by_worker_jobs():
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor.execute("SELECT * FROM migration_jobs.jobs WHERE status = 'verified_by_worker'")
         jobs = cursor.fetchall()
         cursor.close()
         return jobs

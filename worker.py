@@ -119,30 +119,40 @@ def sql_conversion_callback(ch, method, properties, body):
                 )
             else:
                 success = True
-                error_message = "No target connection details provided, skipping verification."
+                error_message = None
                 verification_results = None
                 logger.warning(f" [!] Job {job_id}: No target connection details provided. Skipping verification.")
 
-            if success:
-                final_status = 'verified'
-                logger.info(f" [x] {job_type.upper()} Job {job_id}: Verification successful.")
+            if not success:
+                logger.error(f" [!] Job {job_id}: Verification failed: {error_message}. Attempting self-correction.")
+                correction_prompt = f"The following PostgreSQL code failed with the error: {error_message}. Please fix it.\n\n{converted_sql}"
+                corrected_sql = "".join(ai_converter.convert_oracle_to_postgres(correction_prompt))
+                
+                success, error_message, verification_results = verification.verify_procedure_with_creds(
+                    [corrected_sql],
+                    target_connection_details
+                )
+                if success:
+                    converted_sql = corrected_sql
+
+            if success and not error_message:
+                final_status = 'verified_by_worker'
+                logger.info(f" [x] {job_type.upper()} Job {job_id}: Verification by worker successful.")
                 span.set_status(trace.Status(trace.StatusCode.OK))
-
-                # Update the job with converted SQL
-                job_repository.update_job_status(job_id, final_status, converted_sql=converted_sql)
-
+                job_repository.update_job_status(job_id, final_status, original_sql=original_sql, converted_sql=converted_sql)
             else:
                 final_status = 'failed'
                 logger.error(f" [!] {job_type.upper()} Job {job_id}: Verification failed: {error_message}")
                 span.set_status(trace.Status(trace.StatusCode.ERROR, f"Verification failed: {error_message}"))
-                job_repository.update_job_status(job_id, final_status, error_message=error_message)
+                job_repository.update_job_status(job_id, final_status, original_sql=original_sql, converted_sql=converted_sql, error_message=error_message)
 
-            logger.info(f" [x] {job_type.upper()} Job {job_id} finished with status \'{final_status}\'")
-
-    except Exception as e:
+    except Exception as e: # Critical error in callback
         error_message = f"Critical error in sql_conversion_callback for job {job_id}: {e}"
         logger.error(error_message, exc_info=True)
-        database.update_job_status(job_id, 'failed', error_message=error_message)
+        # Ensure original_sql is preserved even on critical failure
+        existing_job = job_repository.get_job(job_id)
+        current_original_sql = existing_job.get('original_sql') if existing_job else None
+        job_repository.update_job_status(job_id, 'failed', original_sql=current_original_sql, error_message=error_message)
         span.set_status(trace.Status(trace.StatusCode.ERROR, f"Critical failure: {error_message}"))
         ch.basic_reject(delivery_tag=method.delivery_tag, requeue=True) # Requeue for retry
     finally:

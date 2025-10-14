@@ -60,6 +60,7 @@ class ListObjectsRequest(BaseModel):
 class MigrationObject(BaseModel):
     object_type: str  # e.g., 'TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION', 'INDEX', 'PACKAGE', 'TRIGGER'
     object_name: str
+    original_sql: Optional[str] = None
 
 class MigrationDetails(BaseModel):
     source_db_type: str

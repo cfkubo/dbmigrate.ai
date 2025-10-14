@@ -1,6 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom'; // Import useNavigate
+import { useParams, useNavigate } from 'react-router-dom';
 import * as apiClient from './api_client';
+import {
+  Box,
+  TextField,
+  Button,
+  Typography,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Alert,
+  CircularProgress,
+  Paper
+} from '@mui/material';
 import './ConnectionDetails.css';
 
 function ConnectionDetails() {
@@ -78,47 +91,110 @@ function ConnectionDetails() {
   };
 
   return (
-    <div className="connection-details-container">
-      <h2>{dbType.charAt(0).toUpperCase() + dbType.slice(1)} Connection Details</h2>
-      <div className="form-group">
-        <label>Host:</label>
-        <input type="text" value={host} onChange={(e) => setHost(e.target.value)} />
-      </div>
-      <div className="form-group">
-        <label>Port:</label>
-        <input type="number" value={port} onChange={(e) => setPort(e.target.value)} />
-      </div>
-      <div className="form-group">
-        <label>User:</label>
-        <input type="text" value={user} onChange={(e) => setUser(e.target.value)} />
-      </div>
-      <div className="form-group">
-        <label>Password:</label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-      </div>
+    <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+      <Paper elevation={3} sx={{ maxWidth: 600, width: '100%', p: 4 }}>
+        <Typography variant="h4" gutterBottom>
+          {dbType.charAt(0).toUpperCase() + dbType.slice(1)} Connection Details
+        </Typography>
 
-      {dbType === 'oracle' && (
-        <div className="form-group">
-          <label>Connection Type:</label>
-          <select value={connectionType} onChange={(e) => setConnectionType(e.target.value)}>
-            <option value="Service Name">Service Name</option>
-            <option value="SID">SID</option>
-          </select>
-          <label>{connectionType}:</label>
-          <input type="text" value={serviceOrSid} onChange={(e) => setServiceOrSid(e.target.value)} />
-        </div>
-      )}
+        <Box component="form" sx={{ '& .MuiTextField-root': { my: 1 } }}>
+          <TextField
+            fullWidth
+            label="Host"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            margin="normal"
+          />
 
-      {dbType === 'postgresql' && (
-        <div className="form-group">
-          <label>Database Name:</label>
-          <input type="text" value={dbName} onChange={(e) => setDbName(e.target.value)} />
-        </div>
-      )}
+          <TextField
+            fullWidth
+            label="Port"
+            type="number"
+            value={port}
+            onChange={(e) => setPort(e.target.value)}
+            margin="normal"
+          />
 
-      <button onClick={handleConnect}>Connect</button>
-      <p className="connection-status">{connectionStatus}</p>
-    </div>
+          <TextField
+            fullWidth
+            label="User"
+            value={user}
+            onChange={(e) => setUser(e.target.value)}
+            margin="normal"
+          />
+
+          <TextField
+            fullWidth
+            label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            margin="normal"
+          />
+
+          {dbType === 'oracle' && (
+            <>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Connection Type</InputLabel>
+                <Select
+                  value={connectionType}
+                  onChange={(e) => setConnectionType(e.target.value)}
+                  label="Connection Type"
+                >
+                  <MenuItem value="Service Name">Service Name</MenuItem>
+                  <MenuItem value="SID">SID</MenuItem>
+                </Select>
+              </FormControl>
+
+              <TextField
+                fullWidth
+                label={connectionType}
+                value={serviceOrSid}
+                onChange={(e) => setServiceOrSid(e.target.value)}
+                margin="normal"
+              />
+            </>
+          )}
+
+          {dbType === 'postgresql' && (
+            <TextField
+              fullWidth
+              label="Database Name"
+              value={dbName}
+              onChange={(e) => setDbName(e.target.value)}
+              margin="normal"
+            />
+          )}
+
+          <Box sx={{ mt: 3 }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleConnect}
+              fullWidth
+              disabled={connectionStatus === 'Connecting...'}
+            >
+              {connectionStatus === 'Connecting...' ? (
+                <CircularProgress size={24} color="inherit" />
+              ) : (
+                'Connect'
+              )}
+            </Button>
+          </Box>
+
+          {connectionStatus && (
+            <Box sx={{ mt: 2 }}>
+              <Alert 
+                severity={connectionStatus.includes('Error') ? 'error' : 
+                         connectionStatus === 'Connecting...' ? 'info' : 'success'}
+              >
+                {connectionStatus}
+              </Alert>
+            </Box>
+          )}
+        </Box>
+      </Paper>
+    </Box>
   );
 }
 
