@@ -2,17 +2,20 @@ import re
 import sqlparse
 from typing import List
 
-# Keywords that mark a COMPLEX, COMPOUND statement (PL/SQL blocks, DDL that contains sub-statements, etc.).
+# Keywords that mark a COMPLEX, COMPOUND statement (PL/SQL blocks and procedure-like objects).
 # These statements are assumed to contain internal semicolons that should NOT trigger a split.
 BLOCK_STARTERS = (
     'CREATE OR REPLACE', 'BEGIN', 'DECLARE', 'CREATE PACKAGE', 
-    'CREATE FUNCTION', 'CREATE PROCEDURE', 'CREATE TRIGGER',
-    'CREATE TABLE', 'CREATE INDEX', 'ALTER SESSION', 'CREATE USER' 
+    'CREATE FUNCTION', 'CREATE PROCEDURE', 'CREATE TRIGGER'
 )
 
 # Commands that are SIMPLE and must be split by semicolon if there are multiple.
 # We explicitly check for these when deciding whether to run sqlparse.split.
-SPLITTABLE_COMMANDS = ('GRANT', 'SET', 'DROP TABLE', 'DROP FUNCTION', 'DROP PROCEDURE', 'INSERT')
+SPLITTABLE_COMMANDS = (
+    'GRANT', 'SET', 'DROP TABLE', 'DROP FUNCTION', 'DROP PROCEDURE', 'INSERT',
+    'CREATE TABLE', 'ALTER TABLE', 'CREATE INDEX', 'DROP INDEX', 'CREATE SEQUENCE',
+    'DROP SEQUENCE', 'CREATE USER', 'ALTER SESSION'
+)
 
 
 def sanitize_for_execution(sql_content: str, job_type: str) -> List[str]:

@@ -317,7 +317,9 @@ function Home() {
           backgroundSize: 'cover',
           backgroundRepeat: 'no-repeat',
           backgroundPosition: 'center',
-          backgroundImage: `linear-gradient(120deg, rgba(25, 118, 210, 0.95), rgba(26, 35, 126, 0.95)), url(/assets/arch.png)`,
+          backgroundImage: theme => theme.palette.mode === 'light'
+            ? 'linear-gradient(120deg, rgba(25, 118, 210, 0.95), rgba(26, 35, 126, 0.95)), url(/assets/arch.png)'
+            : 'linear-gradient(120deg, rgba(30, 30, 30, 0.95), rgba(45, 45, 45, 0.95)), url(/assets/arch.png)',
           minHeight: '40vh',
           maxHeight: '50vh',
           height: 'auto',

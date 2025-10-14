@@ -1,21 +1,10 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Route, Routes, useLocation, Link } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { 
-  AppBar, 
-  Box, 
-  CssBaseline, 
-  Drawer, 
-  IconButton, 
-  List, 
-  ListItem, 
-  ListItemIcon, 
-  ListItemText, 
-  Toolbar, 
-  Typography,
-  Container,
-  Divider
-} from '@mui/material';
+import { Box, CssBaseline, Drawer, IconButton, List, ListItem, 
+         ListItemIcon, ListItemText, Toolbar, Typography,
+         Container, Divider, AppBar, useTheme } from '@mui/material';
+import { ThemeProvider } from './theme/ThemeContext';
+import { ThemeToggle } from './theme/ThemeToggle';
 import MenuIcon from '@mui/icons-material/Menu';
 import HomeIcon from '@mui/icons-material/Home';
 import StorageIcon from '@mui/icons-material/Storage';
@@ -29,30 +18,9 @@ import Home from './Home';
 import ConnectionDetails from './ConnectionDetails';
 import MigrationWorkflow from './MigrationWorkflow';
 import MigrationPipelines from './MigrationPipelines';
+import { MigrationProvider } from './MigrationContext';
 
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-    background: {
-      default: '#f5f5f5'
-    }
-  },
-  typography: {
-    h1: {
-      fontSize: '2.5rem',
-      fontWeight: 500,
-    },
-    h2: {
-      fontSize: '2rem',
-      fontWeight: 500,
-    },
-  },
-});
+
 
 const drawerWidth = 240;
 const collapsedDrawerWidth = 65;
@@ -139,7 +107,15 @@ function AppContent() {
 
   return (
     <Box sx={{ display: 'flex' }}>
-      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
+      <AppBar 
+        position="fixed" 
+        sx={{ 
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          background: theme => theme.palette.mode === 'light' 
+            ? 'linear-gradient(120deg, #1976d2, #1a237e)'
+            : 'linear-gradient(120deg, #1e1e1e, #2d2d2d)',
+        }}
+      >
         <Toolbar>
           <IconButton
             color="inherit"
@@ -150,9 +126,10 @@ function AppContent() {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div">
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             DbMigrate.AI
           </Typography>
+          <ThemeToggle />
         </Toolbar>
       </AppBar>
 
@@ -223,10 +200,12 @@ function AppContent() {
 
 function App() {
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider>
       <CssBaseline />
       <Router>
-        <AppContent />
+        <MigrationProvider>
+          <AppContent />
+        </MigrationProvider>
       </Router>
     </ThemeProvider>
   );

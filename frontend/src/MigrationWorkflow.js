@@ -28,11 +28,13 @@ import {
   Storage as StorageIcon
 } from '@mui/icons-material';
 import './MigrationWorkflow.css';
+import { useMigration } from './MigrationContext';
 
 function MigrationWorkflow() {
   const location = useLocation();
   const navigate = useNavigate(); // Initialize useNavigate
   const { sourceDbType, sourceConnectionDetails } = location.state || {};
+  const { startNewMigration } = useMigration();
 
   // For now, target is hardcoded to PostgreSQL. In a full flow, this would be selected.
   const targetDbType = 'postgresql';
@@ -127,7 +129,8 @@ function MigrationWorkflow() {
       data_migration_enabled: false, // Set to false as per user request
     };
 
-    navigate('/migration-pipelines', { state: { migrationDetails } });
+    startNewMigration(migrationDetails);
+    navigate('/migration-pipelines');
   };
 
   const isButtonDisabled = !selectedSourceSchema || objectListingStatus.startsWith('Error') || !targetConnectionStatus.startsWith('Connected') || oracleObjects.length === 0 || selectedObjectsForMigration.length === 0;
