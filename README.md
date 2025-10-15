@@ -4,7 +4,7 @@ Private (local) AL powered project to provide a self-service experience for Data
         
 ## 1. Project Plan & Purpose
 
-**Primary Goal:** The main objective of this project is to provide a tool that can convert stored procedures and functions from an Oracle SQL dialect to a PostgreSQL compatible dialect.
+**Primary Goal:** The main objective of this project is to provide a tool that can convert tables,stored procedures,functions, indexes , views etc..  from an Oracle SQL dialect to a PostgreSQL compatible dialect.
 
 **Key Features:**
 1.  **Web UI:** A user-friendly web interface for converting SQL code by pasting it into a text box or uploading a file. It supports both Stored Procedures/Functions and DDL.
@@ -19,6 +19,7 @@ Private (local) AL powered project to provide a self-service experience for Data
 10. **LLM Integration:** Use Ollama LLM for SQL conversion tasks.       
 
 **Target User:** Database administrators and developers who are migrating a database from Oracle to PostgreSQL.
+
 **Motivation:** The motivation behind this project is to simplify the often complex and error-prone process of migrating databases between different SQL dialects, specifically from Oracle to PostgreSQL. By leveraging AI and automation, the tool aims to reduce manual effort and increase accuracy in the conversion process.
 
 #### Technologies Used:
@@ -26,13 +27,13 @@ Private (local) AL powered project to provide a self-service experience for Data
 - Gradio for the web interface.
 - FastAPI for the backend API.
 - RabbitMQ for job queueing.
-- Redis for status tracking. (not yet implemented)
+- Redis for status tracking.
 - oracledb and psycopg2 for database connections.
 
 #### Note:
 This project is experimental and may not cover all edge cases in SQL conversion. Please review converted SQL before use in production environments.
             
-#### Future Improvements:
+#### Future Improvements (WIP):
 - Enhance SQL conversion accuracy. (working: added sql verification)
 - Add support for more Oracle features. (in progress: supports ddl, sp, functions, tables, indexes, views, triggers, packages)
 - Improve user interface and experience. (mvp in place)
@@ -43,8 +44,8 @@ This project is experimental and may not cover all edge cases in SQL conversion.
 - Containerize the application using Docker. (not yet implemented)
 - Deploy the application to a kubernetes cluster. (not yet implemented)
 - Add AI Query Optimizer for psql
-- Enable as MCP Server and MCP tools
-- Guidance on Data Migration from Oracle to Postgres -  This should be outsourced to ETL like tool.  
+- Enable as MCP Server and MCP tools (Working)
+- Guidance on Data Migration from Oracle to Postgres (This should be outsourced to ETL like tool)
 
  
 ---
@@ -157,9 +158,6 @@ This module provides utilities for interacting with Oracle databases. It include
 
 This module contains the core logic for processing SQL files and orchestrating the migration pipeline. It includes `process_sql_file` for sanitizing SQL and queuing execution jobs, and `initiate_migration_pipeline` for managing the end-to-end migration of selected Oracle objects to PostgreSQL.
 
-
-
-
 ### `api/models.py`
 
 This file defines the Pydantic models used for data validation and serialization in the FastAPI application. It ensures that the data exchanged between the client and the server has the correct structure and types.
@@ -183,26 +181,25 @@ This module provides a function to sanitize SQL code by removing comments and no
 
     Make sure the Ollama application is running on your machine.
 
-    **Note:** The model used for conversion is determined by the `OLLAMA_MODEL_NAME` environment variable. If this variable is not set, the application will attempt to detect the first running Ollama model. You can set `OLLAMA_MODEL_NAME` to specify a particular model (e.g., `llama2`, `codellama`).
+    **Note:** The model used for conversion is determined by the `OLLAMA_MODEL_NAME` environment variable. If this variable is not set, the application will attempt to detect the first running Ollama model. You can set `OLLAMA_MODEL_NAME` to specify a particular model (e.g., `llama2`, `codellama`, `gpt_oss`).
 
 ## Running the Application
 
 1.  **Make sure the `gini.sh` script is executable:**
 
     ```bash
-    chmod +x gini.sh
+    sh gini.sh
     ```
 
 2.  **Run the application:**
 
     ```bash
-    ./gini.sh
+    sh run_app.sh
     ```
 
     This script will:
     *   Create a virtual environment.
     *   Install the dependencies.
-    *   Check if Ollama is running.
     *   Start the API server in the background.
     *   Start the Gradio web UI in the foreground.
 
@@ -210,6 +207,14 @@ This module provides a function to sanitize SQL code by removing comments and no
 
     To stop the application, simply press `Ctrl+C` in the terminal where you ran the script. This will stop both the web UI and the API server.
 
+3.  **Run the react frontend:**
+
+    ```bash
+    cd frontend
+    npm install
+    npm start
+    ```
+    
 ## How to Use
 
 1.  Open the Gradio UI in your browser.
