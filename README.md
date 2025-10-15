@@ -1,3 +1,5 @@
+# DbMigrate.ai 
+
 ## Private  AI powered project to automate DB migrations (Experimental)
 
 Private (local) AL powered project to provide a self-service experience for Database migrations. This tool is designed to facilitate the conversion of Oracle SQL syntax to PostgreSQL syntax, including support for stored procedures, functions, and DDL statements. It also includes a data migration feature to transfer data from Oracle to PostgreSQL databases.
