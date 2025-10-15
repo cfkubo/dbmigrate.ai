@@ -103,68 +103,7 @@ graph TD
     RC -->|8. Consumes results from| RM
     RC -->|9. Updates final status in| DB
 ```
-
-
-## Project Scripts
-
-### `gini.sh`
-
-This is the main script to set up and run the entire application. It automates the following steps:
-
-1.  **Cleanup**: Removes artifacts from previous runs, such as `converted-*`, `failed-*`, `jobs.db`, and `successful-*` files.
-2.  **Dependency Check**: Verifies that `uv`, `docker`, and `ollama` are installed.
-3.  **Ollama Model Check**: Ensures that an Ollama model is running and accessible.
-4.  **Python Environment Setup**: Creates a virtual environment (if it doesn't exist) and installs all required Python packages using `uv`.
-5.  **Dockerized Services**:
-    *   Starts a **RabbitMQ** container for messaging.
-    *   Starts an **Oracle Database** container and initializes it with a user and grants.
-    *   Starts a **PostgreSQL** container with `pgvector` for the verifier.
-6.  **Environment Variables**: Exports the necessary database connection details for the application to use.
-7.  **Application Launch**:
-    *   Starts the FastAPI server (`api/main.py`).
-    *   Starts the Celery worker (`worker.py`).
-    *   Starts the Gradio web UI (`app.py`).
-
-To run the script, make it executable and then run it:
-
-```bash
-chmod +x gini.sh
-./gini.sh
-```
-
-## Scripts and Modules
-
-### `app.py`
-
-This is the main entry point for the Gradio web UI. It creates the user interface, handles user interactions, and makes API calls to the backend for conversion tasks. It includes tabs for different functionalities like direct conversion, file upload, DDL conversion, and database connection.
-
-### `api/main.py`
-
-This script defines the FastAPI application and its endpoints. It handles HTTP requests for converting SQL, checking job status, and aggregating results. It uses RabbitMQ to queue conversion jobs.
-
-### `api/database.py`
-
-This module manages all interactions with the PostgreSQL database. It includes functions for creating the jobs table, creating and updating job records, and retrieving job information.
-
-### `api/ai_converter.py`
-
-This module handles the AI-powered SQL conversion and schema comparison. It contains functions like `convert_oracle_to_postgres` for converting Oracle SQL to PostgreSQL syntax and `compare_schemas_with_ollama_ai` for comparing Oracle and PostgreSQL DDLs using an Ollama model.
-
-### `api/oracle_helper.py`
-
-This module provides utilities for interacting with Oracle databases. It includes functions to establish connections, retrieve schema names, list database objects (tables, procedures, etc.), and extract DDL (Data Definition Language) for specified objects. It also supports fetching table data in batches.
-
-### `api/execution_logic.py`
-
-This module contains the core logic for processing SQL files and orchestrating the migration pipeline. It includes `process_sql_file` for sanitizing SQL and queuing execution jobs, and `initiate_migration_pipeline` for managing the end-to-end migration of selected Oracle objects to PostgreSQL.
-
-### `api/models.py`
-
-This file defines the Pydantic models used for data validation and serialization in the FastAPI application. It ensures that the data exchanged between the client and the server has the correct structure and types.
-
-### `api/sanitizer.py`
-
-This module provides a function to sanitize SQL code by removing comments and normalizing whitespace before it is sent to the language model for conversion.
+---
 
 ## Setup
 
@@ -214,13 +153,15 @@ This module provides a function to sanitize SQL code by removing comments and no
     npm install
     npm start
     ```
-    
+
 ## How to Use
 
 1.  Open the Gradio UI in your browser.
 2.  You can either paste your Oracle stored procedure into the text box or upload a file containing the stored procedure.
 3.  Click the "Convert" button.
 4.  The converted PostgreSQL stored procedure will be available for download.
+
+---
 
 ## API Usage
 
@@ -361,6 +302,7 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 }
 ```
 
+---
 
 <p align="center">
 <img src="assets/architecture.png" width="500" alt="Online Web Application" />
@@ -393,5 +335,70 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 ---
 
 ![demo1](assets/demo6.png)
+
+---
+
+# Project Scripts
+
+### `gini.sh`
+
+This is the main script to set up and run the entire application. It automates the following steps:
+
+1.  **Cleanup**: Removes artifacts from previous runs, such as `converted-*`, `failed-*`, `jobs.db`, and `successful-*` files.
+2.  **Dependency Check**: Verifies that `uv`, `docker`, and `ollama` are installed.
+3.  **Ollama Model Check**: Ensures that an Ollama model is running and accessible.
+4.  **Python Environment Setup**: Creates a virtual environment (if it doesn't exist) and installs all required Python packages using `uv`.
+5.  **Dockerized Services**:
+    *   Starts a **RabbitMQ** container for messaging.
+    *   Starts an **Oracle Database** container and initializes it with a user and grants.
+    *   Starts a **PostgreSQL** container with `pgvector` for the verifier.
+6.  **Environment Variables**: Exports the necessary database connection details for the application to use.
+7.  **Application Launch**:
+    *   Starts the FastAPI server (`api/main.py`).
+    *   Starts the Celery worker (`worker.py`).
+    *   Starts the Gradio web UI (`app.py`).
+
+To run the script, make it executable and then run it:
+
+```bash
+chmod +x gini.sh
+./gini.sh
+```
+
+## Scripts and Modules
+
+### `app.py`
+
+This is the main entry point for the Gradio web UI. It creates the user interface, handles user interactions, and makes API calls to the backend for conversion tasks. It includes tabs for different functionalities like direct conversion, file upload, DDL conversion, and database connection.
+
+### `api/main.py`
+
+This script defines the FastAPI application and its endpoints. It handles HTTP requests for converting SQL, checking job status, and aggregating results. It uses RabbitMQ to queue conversion jobs.
+
+### `api/database.py`
+
+This module manages all interactions with the PostgreSQL database. It includes functions for creating the jobs table, creating and updating job records, and retrieving job information.
+
+### `api/ai_converter.py`
+
+This module handles the AI-powered SQL conversion and schema comparison. It contains functions like `convert_oracle_to_postgres` for converting Oracle SQL to PostgreSQL syntax and `compare_schemas_with_ollama_ai` for comparing Oracle and PostgreSQL DDLs using an Ollama model.
+
+### `api/oracle_helper.py`
+
+This module provides utilities for interacting with Oracle databases. It includes functions to establish connections, retrieve schema names, list database objects (tables, procedures, etc.), and extract DDL (Data Definition Language) for specified objects. It also supports fetching table data in batches.
+
+### `api/execution_logic.py`
+
+This module contains the core logic for processing SQL files and orchestrating the migration pipeline. It includes `process_sql_file` for sanitizing SQL and queuing execution jobs, and `initiate_migration_pipeline` for managing the end-to-end migration of selected Oracle objects to PostgreSQL.
+
+### `api/models.py`
+
+This file defines the Pydantic models used for data validation and serialization in the FastAPI application. It ensures that the data exchanged between the client and the server has the correct structure and types.
+
+### `api/sanitizer.py`
+
+This module provides a function to sanitize SQL code by removing comments and normalizing whitespace before it is sent to the language model for conversion.
+
+
 
 
