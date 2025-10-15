@@ -97,7 +97,7 @@ def get_job_result(job_id: str):
         raise HTTPException(status_code=400, detail="Invalid job ID provided.")
     # --- End of validation ---
 
-    child_jobs = database.get_ddl_child_jobs(job_id)
+    child_jobs = database.get_all_child_job_statuses(job_id)
     
     if not child_jobs:
         raise HTTPException(status_code=404, detail="Job not found or no child jobs created.")
@@ -135,7 +135,7 @@ def get_child_job_statuses(parent_job_id: str):
         raise HTTPException(status_code=400, detail="Invalid parent job ID provided.")
     # --- End of validation ---
 
-    child_jobs = database.get_ddl_child_jobs(parent_job_id)
+    child_jobs = database.get_all_child_job_statuses(parent_job_id)
     if not child_jobs:
         raise HTTPException(status_code=404, detail="No child jobs found for the given parent ID.")
     

@@ -173,6 +173,7 @@ def get_oracle_table_ddl(details: models.OracleConnectionDetails, schema_name: s
         A string containing the DDL for the table, or None if not found.
     """
     try:
+        clean_table_name = table_name.split('.')[-1]
         with get_oracle_connection(details.user, details.password, details.host, details.port, details.service_name, details.sid) as connection:
             cursor = connection.cursor()
             # Configure DBMS_METADATA for cleaner DDL output
@@ -189,7 +190,7 @@ def get_oracle_table_ddl(details: models.OracleConnectionDetails, schema_name: s
             """)
             cursor.execute(
                 "SELECT DBMS_METADATA.GET_DDL('TABLE', :obj_name, :schema_name) FROM DUAL",
-                obj_name=table_name.upper(),
+                obj_name=clean_table_name.upper(),
                 schema_name=schema_name.upper()
             )
             ddl_clob = cursor.fetchone()
@@ -293,3 +294,64 @@ def test_oracle_ddl_extraction(details: models.OracleConnectionDetails):
                 raise RuntimeError("DDL extraction test failed. Could not fetch any DDL. Please ensure the user has the necessary permissions (e.g., SELECT ANY DICTIONARY or SELECT_CATALOG_ROLE) and that there are objects in the accessible schemas.")
     except oracledb.Error as e:
         raise RuntimeError(f"Error connecting to Oracle or fetching DDL: {e}") from e
+
+def _get_oracle_ddl_for_type(details: models.OracleConnectionDetails, schema_name: str, object_name: str, object_type: str) -> str | None:
+    """
+    Retrieves the DDL for a specific Oracle object.
+
+    Args:
+        details: The Oracle connection details.
+        schema_name: The name of the schema the object belongs to.
+        object_name: The name of the object.
+        object_type: The type of the object (e.g., 'TABLE', 'VIEW').
+
+    Returns:
+        A string containing the DDL for the object, or None if not found.
+    """
+    try:
+        clean_object_name = object_name.split('.')[-1]
+        with get_oracle_connection(details.user, details.password, details.host, details.port, details.service_name, details.sid) as connection:
+            cursor = connection.cursor()
+            # Configure DBMS_METADATA for cleaner DDL output
+            cursor.execute("""
+                BEGIN
+                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'STORAGE', FALSE);
+                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'SEGMENT_ATTRIBUTES', FALSE);
+                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'SQLTERMINATOR', TRUE);
+                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'PRETTY', TRUE);
+                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'CONSTRAINTS_AS_ALTER', FALSE);
+                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'REF_CONSTRAINTS', TRUE);
+                    DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'EMIT_SCHEMA', FALSE);
+                END;
+            """)
+            cursor.execute(
+                "SELECT DBMS_METADATA.GET_DDL(:obj_type, :obj_name, :schema_name) FROM DUAL",
+                obj_type=object_type.upper(),
+                obj_name=clean_object_name.upper(),
+                schema_name=schema_name.upper()
+            )
+            ddl_clob = cursor.fetchone()
+            if ddl_clob and ddl_clob[0]:
+                return ddl_clob[0].read()
+            return None
+    except oracledb.Error as e:
+        logging.error(f"Error fetching Oracle DDL for {object_type} {schema_name}.{object_name}: {e}")
+        return None
+
+def get_oracle_view_ddl(details: models.OracleConnectionDetails, schema_name: str, view_name: str) -> str | None:
+    return _get_oracle_ddl_for_type(details, schema_name, view_name, 'VIEW')
+
+def get_oracle_procedure_ddl(details: models.OracleConnectionDetails, schema_name: str, procedure_name: str) -> str | None:
+    return _get_oracle_ddl_for_type(details, schema_name, procedure_name, 'PROCEDURE')
+
+def get_oracle_function_ddl(details: models.OracleConnectionDetails, schema_name: str, function_name: str) -> str | None:
+    return _get_oracle_ddl_for_type(details, schema_name, function_name, 'FUNCTION')
+
+def get_oracle_index_ddl(details: models.OracleConnectionDetails, schema_name: str, index_name: str) -> str | None:
+    return _get_oracle_ddl_for_type(details, schema_name, index_name, 'INDEX')
+
+def get_oracle_package_ddl(details: models.OracleConnectionDetails, schema_name: str, package_name: str) -> str | None:
+    return _get_oracle_ddl_for_type(details, schema_name, package_name, 'PACKAGE')
+
+def get_oracle_trigger_ddl(details: models.OracleConnectionDetails, schema_name: str, trigger_name: str) -> str | None:
+    return _get_oracle_ddl_for_type(details, schema_name, trigger_name, 'TRIGGER')

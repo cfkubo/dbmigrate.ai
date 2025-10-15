@@ -24,10 +24,10 @@ import {
 
 function FeatureCard({ icon, title, description }) {
   return (
-    <Card sx={{ 
+    <Card sx={{
       width: '100%',
-      height: '100%', 
-      display: 'flex', 
+      height: '100%',
+      display: 'flex',
       flexDirection: 'column',
       borderRadius: 2,
       bgcolor: 'background.paper',
@@ -53,7 +53,7 @@ function FeatureCard({ icon, title, description }) {
         opacity: 0.8
       }
     }}>
-      <CardContent sx={{ 
+      <CardContent sx={{
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -61,9 +61,9 @@ function FeatureCard({ icon, title, description }) {
         p: { xs: '6%', sm: '8%' },
         pt: { xs: '8%', sm: '10%' }
       }}>
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
+        <Box sx={{
+          display: 'flex',
+          justifyContent: 'center',
           mb: '8%',
           p: '10%',
           borderRadius: '50%',
@@ -72,20 +72,20 @@ function FeatureCard({ icon, title, description }) {
           width: 'clamp(60px, 15%, 100px)',
           aspectRatio: '1/1'
         }} className="feature-icon">
-          {React.cloneElement(icon, { 
-            sx: { 
+          {React.cloneElement(icon, {
+            sx: {
               fontSize: 'clamp(1.5rem, 3vw + 0.5rem, 2.5rem)',
               color: 'primary.main',
               width: '100%',
               height: '100%'
-            } 
+            }
           })}
         </Box>
-        <Typography 
-          variant="h6" 
-          component="div" 
+        <Typography
+          variant="h6"
+          component="div"
           align="center"
-          sx={{ 
+          sx={{
             mb: 2.5,
             fontWeight: 600,
             color: 'text.primary'
@@ -93,11 +93,11 @@ function FeatureCard({ icon, title, description }) {
         >
           {title}
         </Typography>
-        <Typography 
-          variant="body1" 
-          color="text.secondary" 
+        <Typography
+          variant="body1"
+          color="text.secondary"
           align="center"
-          sx={{ 
+          sx={{
             maxWidth: '300px',
             mx: 'auto',
             lineHeight: 1.6
@@ -112,10 +112,10 @@ function FeatureCard({ icon, title, description }) {
 
 function MigrationCard({ title, sourceDb, targetDb, sourceLogo, targetLogo, description, to }) {
   const theme = useTheme();
-  
+
   return (
         <Card
-      sx={{ 
+      sx={{
         width: '100%',
         height: '100%',
         display: 'flex',
@@ -145,19 +145,19 @@ function MigrationCard({ title, sourceDb, targetDb, sourceLogo, targetLogo, desc
           }
         }
       }}>
-      <CardActionArea 
-        component={Link} 
+      <CardActionArea
+        component={Link}
         to={to}
-        sx={{ 
+        sx={{
           height: '100%',
-          display: 'flex', 
+          display: 'flex',
           flexDirection: 'column',
           p: { xs: '4%', sm: '6%', md: '8%' }
         }}
       >
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'space-between',
           mb: 4,
           px: { xs: '4%', sm: '6%', md: '8%' },
@@ -169,7 +169,7 @@ function MigrationCard({ title, sourceDb, targetDb, sourceLogo, targetLogo, desc
             component="img"
             src={sourceLogo}
             alt={sourceDb}
-            sx={{ 
+            sx={{
               width: 'clamp(100px, 40%, 200px)',
               objectFit: 'contain',
               filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))',
@@ -180,13 +180,13 @@ function MigrationCard({ title, sourceDb, targetDb, sourceLogo, targetLogo, desc
               e.target.src = '/assets/default-db.png';
             }}
           />
-          <Box sx={{ 
+          <Box sx={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             width: '20%'
           }}>
-            <CompareArrowsIcon sx={{ 
+            <CompareArrowsIcon sx={{
               color: theme.palette.primary.main,
               fontSize: 'clamp(1.5rem, 2vw + 1rem, 2rem)'
             }} />
@@ -195,7 +195,7 @@ function MigrationCard({ title, sourceDb, targetDb, sourceLogo, targetLogo, desc
             component="img"
             src={targetLogo}
             alt={targetDb}
-            sx={{ 
+            sx={{
               width: 'clamp(100px, 40%, 200px)',
               objectFit: 'contain',
               filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))',
@@ -208,11 +208,11 @@ function MigrationCard({ title, sourceDb, targetDb, sourceLogo, targetLogo, desc
           />
         </Box>
         <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <Typography 
-            variant="h6" 
-            component="div" 
+          <Typography
+            variant="h6"
+            component="div"
             align="center"
-            sx={{ 
+            sx={{
               mb: '0.5em',
               fontWeight: 600,
               fontSize: 'clamp(1.125rem, 2.5vw, 1.5rem)'
@@ -220,9 +220,9 @@ function MigrationCard({ title, sourceDb, targetDb, sourceLogo, targetLogo, desc
           >
             {title}
           </Typography>
-          <Typography 
-            variant="body2" 
-            color="text.secondary" 
+          <Typography
+            variant="body2"
+            color="text.secondary"
             align="center"
             sx={{
               fontSize: 'clamp(0.875rem, 2vw, 1rem)',
@@ -237,7 +237,7 @@ function MigrationCard({ title, sourceDb, targetDb, sourceLogo, targetLogo, desc
       </CardActionArea>
     </Card>
   );
-} 
+}
 
 
 
@@ -307,7 +307,7 @@ function Home() {
   return (
     <Box>
       {/* Hero Section */}
-      <Paper 
+      <Paper
         elevation={0}
         sx={{
           position: 'relative',
@@ -361,9 +361,9 @@ function Home() {
                 >
                   Private & Secure Database Migration
                 </Typography>
-                <Typography 
-                  variant="h5" 
-                  color="inherit" 
+                <Typography
+                  variant="h5"
+                  color="inherit"
                   paragraph
                   sx={{
                     fontSize: 'clamp(1rem, 2vw, 1.25rem)',
@@ -398,8 +398,8 @@ function Home() {
 
       {/* Features Section */}
       <Container maxWidth="lg" sx={{ mb: '10vh' }}>
-        <Box sx={{ 
-          mb: '6vh', 
+        <Box sx={{
+          mb: '6vh',
           textAlign: 'center',
           position: 'relative',
           '&::after': {
@@ -414,10 +414,10 @@ function Home() {
             borderRadius: '1vh'
           }
         }}>
-          <Typography 
-            variant="h3" 
-            gutterBottom 
-            sx={{ 
+          <Typography
+            variant="h3"
+            gutterBottom
+            sx={{
               fontWeight: 700,
               mb: 3,
               background: 'linear-gradient(45deg, primary.main, primary.light)',
@@ -430,10 +430,10 @@ function Home() {
           >
             Why Choose DbMigrate.AI
           </Typography>
-          <Typography 
-            variant="h6" 
+          <Typography
+            variant="h6"
             color="text.secondary"
-            sx={{ 
+            sx={{
               maxWidth: '800px',
               mx: 'auto',
               fontWeight: 400,
@@ -443,9 +443,9 @@ function Home() {
             Comprehensive database migration solution with advanced AI capabilities
           </Typography>
         </Box>
-        <Grid 
-          container 
-          spacing={4} 
+        <Grid
+          container
+          spacing={4}
           alignItems="stretch"
           sx={{
             '.MuiGrid-item': {
@@ -463,8 +463,8 @@ function Home() {
 
       {/* Migration Options Section */}
       <Container maxWidth="xl" sx={{ mb: '8vh' }}>
-        <Box sx={{ 
-          mb: '4vh', 
+        <Box sx={{
+          mb: '4vh',
           textAlign: 'center',
           position: 'relative',
           '&::after': {
@@ -479,10 +479,10 @@ function Home() {
             borderRadius: '1vh'
           }
         }}>
-          <Typography 
-            variant="h3" 
-            gutterBottom 
-            sx={{ 
+          <Typography
+            variant="h3"
+            gutterBottom
+            sx={{
               fontWeight: 700,
               mb: 3,
               fontSize: 'clamp(2rem, 4vw, 3rem)',
@@ -496,10 +496,10 @@ function Home() {
           >
             Supported Migrations
           </Typography>
-          <Typography 
-            variant="h6" 
+          <Typography
+            variant="h6"
             color="text.secondary"
-            sx={{ 
+            sx={{
               maxWidth: '800px',
               mx: 'auto',
               fontSize: 'clamp(1rem, 2vw, 1.25rem)',
@@ -510,8 +510,8 @@ function Home() {
             Choose your source and target databases for migration
           </Typography>
         </Box>
-        <Grid 
-          container 
+        <Grid
+          container
           spacing={{ xs: 2, sm: 4 }}
           alignItems="stretch"
           justifyContent="center"
@@ -535,10 +535,10 @@ function Home() {
       </Container>
 
       {/* Call to Action */}
-      <Box       sx={{ 
-        background: 'linear-gradient(120deg, #1976d2, #1a237e)', 
-        color: 'white', 
-        py: 8, 
+      <Box       sx={{
+        background: 'linear-gradient(120deg, #1976d2, #1a237e)',
+        color: 'white',
+        py: 8,
         mt: 6,
         position: 'relative',
         '&::before': {
@@ -564,7 +564,7 @@ function Home() {
               size="large"
               component={Link}
               to="/connect/oracle"
-              sx={{ 
+              sx={{
                 background: 'linear-gradient(120deg, #ffffff, #f5f5f5)',
                 color: '#1976d2',
                 boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)',

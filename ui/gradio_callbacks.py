@@ -345,7 +345,7 @@ def connect_to_oracle(host, port, user, password, service_name, sid, connection_
         payload["sid"] = sid
 
     try:
-        response = requests.post(f"{API_URL}/connect", json=payload)
+        response = requests.post(f"{API_URL}/api/oracle/connect", json=payload)
         response.raise_for_status()
         data = response.json()
         schemas = data.get("schemas", [])
@@ -411,7 +411,7 @@ def list_objects_for_schema(host, port, user, password, service_name, sid, conne
         "object_type": object_type,
     }
     try:
-        response = requests.post(f"{API_URL}/list-objects", json=payload)
+        response = requests.post(f"{API_URL}/api/oracle/list-objects", json=payload)
         response.raise_for_status()
         data = response.json()
         objects = data.get("objects", [])
@@ -447,7 +447,7 @@ def extract_ddl(host, port, user, password, service_name, sid, connection_type, 
         "select_all": select_all,
     }
     try:
-        response = requests.post(f"{API_URL}/extract", json=payload)
+        response = requests.post(f"{API_URL}/api/oracle/extract", json=payload)
         response.raise_for_status()
         data = response.json()
         parent_job_id = data.get("parent_job_id")
@@ -551,7 +551,7 @@ def test_pg_connection(pg_host, pg_port, pg_user, pg_pass):
         "dbname": "postgres" # Connect to default database
     }
     try:
-        response = requests.post(f"{API_URL}/test-postgres-connection", json=pg_creds)
+        response = requests.post(f"{API_URL}/api/test-postgres-connection", json=pg_creds)
         response.raise_for_status()
         return response.json().get("message", "Connection to PostgreSQL server successful!")
     except requests.exceptions.RequestException as e:
@@ -571,7 +571,7 @@ def create_database_frontend(pg_host, pg_port, pg_user, pg_pass, pg_db):
         "dbname": pg_db
     }
     try:
-        response = requests.post(f"{API_URL}/create-database", json=pg_creds)
+        response = requests.post(f"{API_URL}/api/create-database", json=pg_creds)
         response.raise_for_status()
         return response.json().get("message", f"Database '{pg_db}' created successfully or already exists.")
     except requests.exceptions.RequestException as e:
@@ -599,7 +599,7 @@ def submit_sql_file(file, pg_host, pg_port, pg_user, pg_pass, pg_db):
             original_filename = getattr(file, 'orig_name', os.path.basename(file.name))
             files = {'file': (original_filename, f, 'application/sql')}
             data = {'pg_creds_json': json.dumps(pg_creds)}
-            response = requests.post(f"{API_URL}/execute-sql", files=files, data=data)
+            response = requests.post(f"{API_URL}/api/execute-sql", files=files, data=data)
             response.raise_for_status()
             job_id = response.json().get("job_id")
             yield f"Job {job_id} submitted. Polling for status...", job_id, gr.update(visible=False), gr.update(visible=False)

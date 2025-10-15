@@ -18,7 +18,7 @@ SPLITTABLE_COMMANDS = (
 )
 
 
-def sanitize_for_execution(sql_content: str, job_type: str) -> List[str]:
+def sanitize_for_execution(sql_content: str) -> List[str]:
     """
     Sanitizes and splits SQL content into executable statements, focusing on Oracle
     syntax by prioritizing the block delimiter ('/') and using a strict keyword-based

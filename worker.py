@@ -472,17 +472,17 @@ def extraction_callback(ch, method, properties, body):
                 if object_type == 'TABLE':
                     extracted_ddl = oracle_helper.get_oracle_table_ddl(oracle_details, source_schema, object_name)
                 elif object_type == 'VIEW':
-                    extracted_ddl = oracle_helper.get_oracle_view_ddl(source_connection_details, source_schema, object_name)
+                    extracted_ddl = oracle_helper.get_oracle_view_ddl(oracle_details, source_schema, object_name)
                 elif object_type == 'PROCEDURE':
-                    extracted_ddl = oracle_helper.get_oracle_procedure_ddl(source_connection_details, source_schema, object_name)
+                    extracted_ddl = oracle_helper.get_oracle_procedure_ddl(oracle_details, source_schema, object_name)
                 elif object_type == 'FUNCTION':
-                    extracted_ddl = oracle_helper.get_oracle_function_ddl(source_connection_details, source_schema, object_name)
+                    extracted_ddl = oracle_helper.get_oracle_function_ddl(oracle_details, source_schema, object_name)
                 elif object_type == 'INDEX':
-                    extracted_ddl = oracle_helper.get_oracle_index_ddl(source_connection_details, source_schema, object_name)
+                    extracted_ddl = oracle_helper.get_oracle_index_ddl(oracle_details, source_schema, object_name)
                 elif object_type == 'PACKAGE':
-                    extracted_ddl = oracle_helper.get_oracle_package_ddl(source_connection_details, source_schema, object_name)
+                    extracted_ddl = oracle_helper.get_oracle_package_ddl(oracle_details, source_schema, object_name)
                 elif object_type == 'TRIGGER':
-                    extracted_ddl = oracle_helper.get_oracle_trigger_ddl(source_connection_details, source_schema, object_name)
+                    extracted_ddl = oracle_helper.get_oracle_trigger_ddl(oracle_details, source_schema, object_name)
                 else:
                     error_message = f"Unsupported object type for extraction: {object_type}"
                     logger.error(error_message)

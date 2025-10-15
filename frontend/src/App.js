@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Route, Routes, useLocation, Link } from 'react-router-dom';
-import { Box, CssBaseline, Drawer, IconButton, List, ListItem, 
+import { Box, CssBaseline, Drawer, IconButton, List, ListItem,
          ListItemIcon, ListItemText, Toolbar, Typography,
          Container, Divider, AppBar, useTheme } from '@mui/material';
 import { ThemeProvider } from './theme/ThemeContext';
@@ -19,7 +19,7 @@ import ConnectionDetails from './ConnectionDetails';
 import MigrationWorkflow from './MigrationWorkflow';
 import MigrationPipelines from './MigrationPipelines';
 import { MigrationProvider } from './MigrationContext';
-
+import DbMigrate from './DbMigrate';
 
 
 const drawerWidth = 240;
@@ -40,25 +40,26 @@ function AppContent() {
 
   const menuItems = [
     { text: 'Home', icon: <HomeIcon />, path: '/' },
+    { text: 'DbMigrate.AI', icon: <CompareArrowsIcon />, path: '/dbmigrate' },
     { text: 'Connect Database', icon: <StorageIcon />, path: '/connect/oracle' },
     { text: 'Migration Workflow', icon: <CompareArrowsIcon />, path: '/migrate' },
     { text: 'Migration Pipelines', icon: <SchemaIcon />, path: '/migration-pipelines' },
   ];
 
   const drawer = (
-    <Box sx={{ 
-      height: '100%', 
-      display: 'flex', 
-      flexDirection: 'column' 
+    <Box sx={{
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column'
     }}>
       <Toolbar />
       <Divider />
       <List sx={{ flexGrow: 1 }}>
         {menuItems.map((item) => (
-          <ListItem 
-            button 
-            key={item.text} 
-            component={Link} 
+          <ListItem
+            button
+            key={item.text}
+            component={Link}
             to={item.path}
             selected={location.pathname === item.path}
             sx={{
@@ -76,19 +77,19 @@ function AppContent() {
             >
               {item.icon}
             </ListItemIcon>
-            <ListItemText 
-              primary={item.text} 
-              sx={{ 
+            <ListItemText
+              primary={item.text}
+              sx={{
                 opacity: isDrawerCollapsed ? 0 : 1,
                 display: isDrawerCollapsed ? 'none' : 'block'
-              }} 
+              }}
             />
           </ListItem>
         ))}
       </List>
       <Divider />
       <Box sx={{ p: 1.5 }}>
-        <IconButton 
+        <IconButton
           onClick={handleDrawerCollapse}
           sx={{
             width: '100%',
@@ -107,11 +108,11 @@ function AppContent() {
 
   return (
     <Box sx={{ display: 'flex' }}>
-      <AppBar 
-        position="fixed" 
-        sx={{ 
+      <AppBar
+        position="fixed"
+        sx={{
           zIndex: (theme) => theme.zIndex.drawer + 1,
-          background: theme => theme.palette.mode === 'light' 
+          background: theme => theme.palette.mode === 'light'
             ? 'linear-gradient(120deg, #1976d2, #1a237e)'
             : 'linear-gradient(120deg, #1e1e1e, #2d2d2d)',
         }}
@@ -132,13 +133,13 @@ function AppContent() {
           <ThemeToggle />
         </Toolbar>
       </AppBar>
-
+   
       <Box
         component="nav"
-        sx={{ 
-          width: { 
-            sm: isDrawerCollapsed ? collapsedDrawerWidth : drawerWidth 
-          }, 
+        sx={{
+          width: {
+            sm: isDrawerCollapsed ? collapsedDrawerWidth : drawerWidth
+          },
           flexShrink: { sm: 0 },
           transition: 'width 0.2s'
         }}
@@ -150,8 +151,8 @@ function AppContent() {
           ModalProps={{ keepMounted: true }}
           sx={{
             display: { xs: 'block', sm: 'none' },
-            '& .MuiDrawer-paper': { 
-              boxSizing: 'border-box', 
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
               width: drawerWidth,
               transition: 'width 0.2s'
             },
@@ -163,8 +164,8 @@ function AppContent() {
           variant="permanent"
           sx={{
             display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': { 
-              boxSizing: 'border-box', 
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
               width: isDrawerCollapsed ? collapsedDrawerWidth : drawerWidth,
               transition: 'width 0.2s',
               overflowX: 'hidden'
@@ -188,6 +189,7 @@ function AppContent() {
         <Container maxWidth="lg">
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/dbmigrate" element={<DbMigrate />} />
             <Route path="/connect/:dbType" element={<ConnectionDetails />} />
             <Route path="/migrate" element={<MigrationWorkflow />} />
             <Route path="/migration-pipelines" element={<MigrationPipelines />} />
