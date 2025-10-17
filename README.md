@@ -1,5 +1,9 @@
-# dbmigrate.ai
+# dbmigrate.ai (An AI assistant for database migration)
 
+**Note:**
+This project is experimental and may not cover all edge cases in SQL conversion. Please review converted SQL before use in production environments.
+  
+ 
 ## Overview
 
 **dbmigrate.ai** is an Private AI-powered tool designed to facilitate the migration of databases from Oracle to PostgreSQL. It offers a comprehensive solution with a web-based user interface and a RESTful API to streamline the entire migration process.
@@ -64,9 +68,7 @@ The application follows a distributed architecture:
 
 **Motivation:** The motivation behind this project is to simplify the often complex and error-prone process of migrating databases between different SQL dialects, specifically from Oracle to PostgreSQL. By leveraging AI and automation, the tool aims to reduce manual effort and increase accuracy in the conversion process.
 
-#### Note:
-This project is experimental and may not cover all edge cases in SQL conversion. Please review converted SQL before use in production environments.
-            
+          
 #### Future Improvements (WIP):
 - Enhance SQL conversion accuracy. (working: added sql verification)
 - Add support for more Oracle features. (in progress: supports ddl, sp, functions, tables, indexes, views, triggers, packages)
