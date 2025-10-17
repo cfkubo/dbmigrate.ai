@@ -347,13 +347,13 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 
 ![main](assets/main.png)
 
-![moption](assests/moption.png)
+![moption](assets/moption.png)
 
-![mflow](assests/mp.png)
+![mflow](assets/mp.png)
 
-![mflow](assests/mflow.png)
+![mflow](assets/mflow.png)
 
-![mflow](assests/mflowfull.png)
+![mflow](assets/mflowfull.png)
 
 
 <!-- ![demo0](assets/react.png)
