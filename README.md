@@ -161,7 +161,7 @@ This project provides a web-based UI and an API to convert Oracle stored procedu
 
 ## Working with API's for bluk conversion
 
-The API provides a way to convert Oracle stored procedures to PostgreSQL programmatically. It's a two-step process:
+The API provides a way to convert Oracle SQL to PostgreSQL PSQL. It's a two-step process:
 
 ### 1. Upload SQL file for conversion
 
