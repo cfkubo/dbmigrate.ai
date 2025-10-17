@@ -349,9 +349,9 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 
 ![moption](assets/moption.png)
 
-![mflow](assets/mp.png)
-
 ![mflow](assets/mflow.png)
+
+![mflow](assets/mp.png)
 
 ![mflow](assets/mflowfull.png)
 
