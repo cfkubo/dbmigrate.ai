@@ -1,0 +1,180 @@
+version: '3.8'
+
+networks:
+  dbmigrateai-network:
+    driver: bridge
+
+volumes:
+  oracle-volume:
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: some-rabbit
+    hostname: my-rabbit
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+      - "15692:15692"
+    networks:
+      - dbmigrateai-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - dbmigrateai-network
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: password
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - dbmigrateai-network
+
+  oracle:
+    image: my-custom-oracle-db:latest
+    container_name: oracle-free
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: password
+    env_file:
+      - .env
+    volumes:
+      - /Users/projectsuno/Documents/workspace/spf-converter/sql-assets/customer_orders:/scripts
+      - oracle-volume:/opt/oracle/oradata
+    networks:
+      - dbmigrateai-network
+
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: ${DB_CONTAINER_NAME}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    env_file:
+      - .env
+    networks:
+      - dbmigrateai-network
+
+  valkey:
+    image: valkey/valkey:latest
+    container_name: valkey
+    ports:
+      - "6379:6379"
+    networks:
+      - dbmigrateai-network
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: --config /etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    networks:
+      - dbmigrateai-network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+    networks:
+      - dbmigrateai-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - rabbitmq
+      - postgres
+      - oracle
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    env_file:
+      - .env
+    networks:
+      - dbmigrateai-network
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: web
+    ports:
+      - "7860:7860"
+    depends_on:
+      - api
+    env_file:
+      - .env
+    networks:
+      - dbmigrateai-network
+
+  verifier:
+    build:
+      context: .
+      dockerfile: Dockerfile.verifier
+    container_name: verifier
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    networks:
+      - dbmigrateai-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: worker
+    depends_on:
+      - rabbitmq
+      - api
+    env_file:
+      - .env
+    networks:
+      - dbmigrateai-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    env_file:
+      - .env
+    networks:
+      - dbmigrateai-network

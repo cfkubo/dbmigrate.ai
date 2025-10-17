@@ -319,6 +319,12 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 
 ![mff](assets/mff.png)
 
+![d1](assets/d1.png)
+
+![d2](assets/d2.png)
+
+![d3](assets/d3.png)
+
 
 <!-- ![demo0](assets/react.png)
 

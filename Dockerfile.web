@@ -1,0 +1,36 @@
+# Base image
+FROM python:3.11-slim
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y build-essential libaio1t64
+
+# Set working directory
+WORKDIR /app
+
+# Download and install Oracle Instant Client
+RUN apt-get install -y wget unzip
+RUN wget https://download.oracle.com/otn_software/linux/instantclient/211000/instantclient-basic-linux.x64-21.1.0.0.0.zip && \
+    unzip instantclient-basic-linux.x64-21.1.0.0.0.zip && \
+    mv instantclient_21_1 /opt/oracle/ && \
+    rm instantclient-basic-linux.x64-21.1.0.0.0.zip
+
+# Set environment variables for Oracle Instant Client
+ENV LD_LIBRARY_PATH=/opt/oracle/instantclient_21_1
+ENV ORACLE_HOME=/opt/oracle/instantclient_21_1
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the web application code
+COPY app.py ./
+COPY config.py ./
+COPY ui/ /app/ui/
+COPY project/ /app/project/
+
+ENV PYTHONPATH "${PYTHONPATH}:/app"
+
+# Expose the port the Web UI runs on
+EXPOSE 7860
+
+# Command to run the Web UI
+CMD ["python", "app.py"]

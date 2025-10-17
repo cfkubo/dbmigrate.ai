@@ -1,0 +1,19 @@
+# Base image
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy verifier requirements and install dependencies
+COPY verifier/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the verifier application code
+COPY verifier/ ./verifier
+COPY api/ /app/api/
+COPY sql-assets/ /app/sql-assets/
+
+ENV PYTHONPATH "${PYTHONPATH}:/app"
+
+# Command to run the Verifier
+CMD ["python", "verifier/main.py"]

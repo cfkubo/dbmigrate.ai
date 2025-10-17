@@ -32,3 +32,4 @@ langchain_ollama
 opentelemetry-instrumentation-logging
 opentelemetry-instrumentation-requests
 opentelemetry-instrumentation-psycopg2
+
