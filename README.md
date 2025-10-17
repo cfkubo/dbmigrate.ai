@@ -149,7 +149,7 @@ This project provides a web-based UI and an API to convert Oracle stored procedu
 
 ### option 1: Migration workflow and MCP tools with Gradio.
 
-1.  Open the Gradio UI in your browser [http://127.0.0.1:7860/?lang=mcp][http://127.0.0.1:7860/?lang=mcp]
+1.  Open the Gradio UI in your browser [http://127.0.0.1:7860/?lang=mcp](http://127.0.0.1:7860/?lang=mcp)
 2.  You can either paste your Oracle stored procedure into the text box or upload a file containing the stored procedure.
 3.  Click the "Convert" button.
 4.  The converted PostgreSQL stored procedure will be available for download.
