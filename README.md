@@ -286,7 +286,7 @@ Once all jobs are complete, the API will return a `200` status with the aggregat
 
     The resulting `all_converted.sql` file will contain all the converted SQL, with comments indicating which jobs failed.
 
-## DDL Conversion (New Feature)
+<!-- ## DDL Conversion 
 
 This project now supports the conversion of Oracle DDL (Data Definition Language) to PostgreSQL DDL.
 
@@ -339,7 +339,7 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 }
 ```
 
----
+--- -->
 
 <!-- <p align="center">
 <img src="assets/architecture.png" width="500" alt="Online Web Application" />
