@@ -3,6 +3,7 @@
 **Note:**
 This project is experimental and may not cover all edge cases in SQL conversion. Please review converted SQL before use in production environments.
 
+Blog Post: [DbMigrate.AI - An AI-Powered Database Migration Assistant](https://site.arullab.com/posts/DBMIGRATEAI/)
 
 ![logo](assets/dbmigrate.png)
  
