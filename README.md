@@ -338,9 +338,9 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 
 ---
 
-<p align="center">
+<!-- <p align="center">
 <img src="assets/architecture.png" width="500" alt="Online Web Application" />
-</p>
+</p> -->
 
 
 ### Project WebUI Screnshots
