@@ -17,6 +17,7 @@ The tool leverages a local Ollama Large Language Model (LLM) to automatically co
 - **SQL Execution:** Executes SQL scripts on the target PostgreSQL database.
 - **Data Migration:** Migrates data from Oracle tables to their PostgreSQL counterparts.
 - **Verification:** Verifies the converted SQL against the target PostgreSQL database to ensure compatibility and correctness.
+- **llm autocorrect** failed jobs are retried with llm for syntax auto correction.
 - **Web UI:** An intuitive Gradio-based web interface for:
     - Database connection management (Oracle and PostgreSQL).
     - Metadata extraction from Oracle.
@@ -27,6 +28,7 @@ The tool leverages a local Ollama Large Language Model (LLM) to automatically co
 - **REST API:** A FastAPI-based API that allows for programmatic control over all migration functionalities.
 - **Asynchronous by Design:** Utilizes RabbitMQ as a message broker to handle time-consuming tasks like SQL conversion and data migration asynchronously, ensuring the UI remains responsive.
 - **Job Tracking:** Employs a PostgreSQL database to persist and track the status of all migration jobs.
+- **MCP TOOLS** Enable as MCP Server and MCP tools 
 - **Containerized Environment:** Uses Docker to run all necessary services, including RabbitMQ, Oracle, and PostgreSQL, ensuring a consistent and reproducible environment.
 
 ## Project Structure
@@ -70,17 +72,16 @@ The application follows a distributed architecture:
 
           
 #### Future Improvements (WIP):
-- Enhance SQL conversion accuracy. (working: added sql verification)
+- Enhance SQL conversion accuracy with RAG/CAG. (current options:  sql verification, llm auto correction)
 - Add support for more Oracle features. (in progress: supports ddl, sp, functions, tables, indexes, views, triggers, packages)
 - Improve user interface and experience. (mvp in place)
 - Implement authentication and security features. (not yet implemented)
 - Add more robust error handling and logging. (basic in place: need to improve)
 - Implement Redis for tracking migration status. (not yet implemented: should we use rabbitmq for this?)
-- Add support for more database systems. (Is it worth it?)
-- Containerize the application using Docker. (not yet implemented)
+- Add support for more database systems. (Is it worth it?????)
+- Containerize the application using Docker compose. (not yet implemented)
 - Deploy the application to a kubernetes cluster. (not yet implemented)
-- Add AI Query Optimizer for psql
-- Enable as MCP Server and MCP tools (Working)
+- Add AI Query Optimizer for psql (not yet implemented)
 - Guidance on Data Migration from Oracle to Postgres (This should be outsourced to ETL like tool)
 
  
