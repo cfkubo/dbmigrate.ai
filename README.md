@@ -97,51 +97,6 @@ The application follows a distributed architecture:
 
 This project provides a web-based UI and an API to convert Oracle stored procedures, functions and DDL's to PostgreSQL PL/pgSQL syntax using a local Ollama model.
 
-
-```mermaid
-graph TD
-    subgraph User
-        A["UI / API Client"]
-    end
-
-    subgraph API_Server["API Server (Producer)"]
-        B["api/main.py"]
-    end
-
-    subgraph Message_Broker
-        RM["RabbitMQ"]
-    end
-
-    subgraph Workers["Workers (Consumers)"]
-        W["Multiple worker.py instances"]
-    end
-
-    subgraph External_Services
-        LLM["Ollama LLM"]
-        PG["PostgreSQL for Verification"]
-    end
-
-    subgraph Persistent_Job_Tracking
-        DB["jobs.db (postgres)"]
-    end
-
-    A -->|1. Upload SQL File| B
-    B -->|2. Publishes jobs| RM
-    B -->|3. Creates/updates job status| DB
-    W -->|4. Consumes jobs from| RM
-    W -->|5. Converts SQL using| LLM
-    W -->|6. Verifies SQL against| PG
-    W -->|7. Publishes results back to| RM
-
-    subgraph Result_Collector["Result Collector (Async)"]
-        RC["Result Consumer"]
-    end
-
-    RC -->|8. Consumes results from| RM
-    RC -->|9. Updates final status in| DB
-```
----
-
 ## Setup
 
 1.  **Install Dependencies using uv:**
