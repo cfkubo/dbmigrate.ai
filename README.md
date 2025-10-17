@@ -87,6 +87,25 @@ The application follows a distributed architecture:
  
 ---
 
+### Project WebUI Screnshots
+
+![main](assets/main.png)
+
+![moption](assets/moption.png)
+
+![mflow](assets/mflow.png)
+
+![mflow](assets/mp.png)
+
+![mflow](assets/mflowfull.png)
+
+![mff](assets/mff.png)
+
+![d1](assets/d1.png)
+
+![d2](assets/d2.png)
+
+![d3](assets/d3.png)
 <!-- ---
 
 ![logo](assets/logo1.png) -->
@@ -303,27 +322,6 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 <!-- <p align="center">
 <img src="assets/architecture.png" width="500" alt="Online Web Application" />
 </p> -->
-
-
-### Project WebUI Screnshots
-
-![main](assets/main.png)
-
-![moption](assets/moption.png)
-
-![mflow](assets/mflow.png)
-
-![mflow](assets/mp.png)
-
-![mflow](assets/mflowfull.png)
-
-![mff](assets/mff.png)
-
-![d1](assets/d1.png)
-
-![d2](assets/d2.png)
-
-![d3](assets/d3.png)
 
 
 <!-- ![demo0](assets/react.png)
