@@ -15,7 +15,6 @@ The tool leverages a local Ollama Large Language Model (LLM) to automatically co
 - **AI-Powered SQL Conversion:** Automatically converts Oracle SQL to PostgreSQL syntax.
 - **Database Metadata Extraction:** Extracts schema information and DDLs from Oracle databases for various objects like Tables, Views, Procedures, etc.
 - **SQL Execution:** Executes SQL scripts on the target PostgreSQL database.
-- **Data Migration:** Migrates data from Oracle tables to their PostgreSQL counterparts.
 - **Verification:** Verifies the converted SQL against the target PostgreSQL database to ensure compatibility and correctness.
 - **llm autocorrect** failed jobs are retried with llm for syntax auto correction.
 - **Web UI:** An intuitive Gradio-based web interface for:
@@ -81,7 +80,7 @@ The application follows a distributed architecture:
 - Containerize the application using Docker compose. (not yet implemented)
 - Deploy the application to a kubernetes cluster. (not yet implemented)
 - Add AI Query Optimizer for psql (not yet implemented)
-- Guidance on Data Migration from Oracle to Postgres (This should be outsourced to ETL like tool)
+- Guidance on Data Migration from Oracle to Postgres (This should be outsourced to ETL like tool: basic implementation in gradio py)
 
  
 ---
