@@ -2,7 +2,9 @@
 
 **Note:**
 This project is experimental and may not cover all edge cases in SQL conversion. Please review converted SQL before use in production environments.
-  
+
+
+![logo](assets/dbmigrate.png)
  
 ## Overview
 
@@ -85,8 +87,6 @@ The application follows a distributed architecture:
  
 ---
 
-![logo](assets/dbmigrate.png)
-
 <!-- ---
 
 ![logo](assets/logo1.png) -->
@@ -159,7 +159,7 @@ This project provides a web-based UI and an API to convert Oracle stored procedu
 
 ---
 
-## API Usage
+## Working with API's for bluk conversion
 
 The API provides a way to convert Oracle stored procedures to PostgreSQL programmatically. It's a two-step process:
 
