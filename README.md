@@ -28,8 +28,8 @@ The tool leverages a local Ollama Large Language Model (LLM) to automatically co
 - **REST API:** A FastAPI-based API that allows for programmatic control over all migration functionalities.
 - **Asynchronous by Design:** Utilizes RabbitMQ as a message broker to handle time-consuming tasks like SQL conversion and data migration asynchronously, ensuring the UI remains responsive.
 - **Job Tracking:** Employs a PostgreSQL database to persist and track the status of all migration jobs.
-- **MCP TOOLS** Enable as MCP Server and MCP tools 
-- **Containerized Environment:** Uses Docker to run all necessary services, including RabbitMQ, Oracle, and PostgreSQL, ensuring a consistent and reproducible environment.
+- **MCP TOOLS:** Enable as MCP Server and MCP tools 
+- **Tracing:** - Tracing for tracking job status, performance and errors. 
 
 ## Project Structure
 
@@ -77,7 +77,6 @@ The application follows a distributed architecture:
 - Improve user interface and experience. (mvp in place)
 - Implement authentication and security features. (not yet implemented)
 - Add more robust error handling and logging. (basic in place: need to improve)
-- Implement Redis for tracking migration status. (not yet implemented: should we use rabbitmq for this?)
 - Add support for more database systems. (Is it worth it?????)
 - Containerize the application using Docker compose. (not yet implemented)
 - Deploy the application to a kubernetes cluster. (not yet implemented)
@@ -343,7 +342,7 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 
 ---
 
-# Project Scripts
+<!-- # Project Scripts
 
 ### `gini.sh`
 
@@ -368,8 +367,8 @@ To run the script, make it executable and then run it:
 ```bash
 chmod +x gini.sh
 ./gini.sh
-```
-
+``` -->
+<!-- 
 ## Scripts and Modules
 
 ### `app.py`
@@ -406,4 +405,4 @@ This module provides a function to sanitize SQL code by removing comments and no
 
 
 
-
+ -->
