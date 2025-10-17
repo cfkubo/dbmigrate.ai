@@ -1,4 +1,4 @@
-# Dbmigrate.ai (An AI assistant for database migration)
+# DbMigrate.ai (An AI assistant for database migration)
 
 **Note:**
 This project is experimental and may not cover all edge cases in SQL conversion. Please review converted SQL before use in production environments.
