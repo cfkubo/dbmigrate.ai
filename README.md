@@ -88,9 +88,9 @@ The application follows a distributed architecture:
 
 ![logo](assets/dbmigrate.png)
 
----
+<!-- ---
 
-<!-- ![logo](assets/logo1.png) -->
+![logo](assets/logo1.png) -->
 
 ----
 
