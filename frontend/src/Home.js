@@ -15,7 +15,6 @@ import {
 } from '@mui/material';
 import {
   CompareArrows as CompareArrowsIcon,
-  Speed as SpeedIcon,
   AutoFixHigh as AIIcon,
   Security as SecurityIcon,
   Analytics as AnalyticsIcon,
@@ -288,11 +287,6 @@ function Home() {
       description: "Intelligent schema and code conversion with advanced AI algorithms"
     },
     {
-      icon: <SpeedIcon sx={{ fontSize: 40, color: '#00c853' }} />,
-      title: "Fast Migration",
-      description: "Accelerated migration process with automated conversion pipelines"
-    },
-    {
       icon: <SecurityIcon sx={{ fontSize: 40, color: '#5c6bc0' }} />,
       title: "Secure & Reliable",
       description: "Enterprise-grade security with data integrity validation"
@@ -447,6 +441,7 @@ function Home() {
           container
           spacing={4}
           alignItems="stretch"
+          justifyContent="center"
           sx={{
             '.MuiGrid-item': {
               display: 'flex'
@@ -454,7 +449,7 @@ function Home() {
           }}
         >
           {features.map((feature, index) => (
-            <Grid item xs={12} sm={6} md={3} key={index}>
+            <Grid item xs={12} sm={6} md={4} key={index}>
               <FeatureCard {...feature} />
             </Grid>
           ))}
@@ -517,17 +512,14 @@ function Home() {
           justifyContent="center"
           sx={{
             '.MuiGrid-item': {
-              display: 'flex',
-              width: { xs: '100%', sm: '50%' },
-              maxWidth: { sm: '600px' }
+              display: 'flex'
             },
             mx: 'auto',
-            width: '100%',
             maxWidth: '1400px'
           }}
         >
           {migrationOptions.map((option, index) => (
-            <Grid item xs={12} sm={6} key={index}>
+            <Grid item xs={12} sm={6} md={6} key={index}>
               <MigrationCard {...option} />
             </Grid>
           ))}

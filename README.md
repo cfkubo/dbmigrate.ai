@@ -88,7 +88,7 @@ This project is experimental and may not cover all edge cases in SQL conversion.
 
 ---
 
-![logo](assets/logo1.png)
+<!-- ![logo](assets/logo1.png) -->
 
 ----
 
@@ -345,7 +345,18 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 
 ### Project WebUI Screnshots
 
-![demo0](assets/react.png)
+![main](assets/main.png)
+
+![moption](assests/moption.png)
+
+![mflow](assests/mp.png)
+
+![mflow](assests/mflow.png)
+
+![mflow](assests/mflowfull.png)
+
+
+<!-- ![demo0](assets/react.png)
 
 
 ![demo1](assets/demo2.png)
@@ -368,7 +379,7 @@ curl http://127.0.0.1:8000/job/your-new-job-id
 
 ---
 
-![demo1](assets/demo6.png)
+![demo1](assets/demo6.png) -->
 
 ---
 
