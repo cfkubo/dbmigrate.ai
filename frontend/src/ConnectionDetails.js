@@ -26,6 +26,11 @@ function ConnectionDetails() {
   const [serviceOrSid, setServiceOrSid] = useState(''); // For Oracle
   const [connectionType, setConnectionType] = useState('Service Name'); // For Oracle
   const [dbName, setDbName] = useState(''); // For PostgreSQL
+  const [database, setDatabase] = useState(''); // For DB2
+  const [hostname, setHostname] = useState(''); // For DB2
+  const [protocol, setProtocol] = useState('TCPIP'); // For DB2
+  const [uid, setUid] = useState(''); // For DB2
+  const [pwd, setPwd] = useState(''); // For DB2
   const [connectionStatus, setConnectionStatus] = useState('');
 
   useEffect(() => {
@@ -42,6 +47,21 @@ function ConnectionDetails() {
           setConnectionType(defaults.service_name ? 'Service Name' : 'SID');
         } else if (dbType === 'postgresql') {
           setDbName(defaults.dbname || '');
+        } else if (dbType === 'mysql') {
+          setDbName(defaults.database || '');
+        } else if (dbType === 'sqlserver') {
+          setDbName(defaults.database || '');
+        } else if (dbType === 'teradata') {
+          setHost(defaults.host || '');
+          setUser(defaults.user || '');
+          setPassword(defaults.password || '');
+        } else if (dbType === 'db2') {
+          setDatabase(defaults.database || '');
+          setHostname(defaults.hostname || '');
+          setPort(defaults.port || '');
+          setProtocol(defaults.protocol || '');
+          setUid(defaults.uid || '');
+          setPwd(defaults.pwd || '');
         }
       } catch (error) {
         console.error("Error fetching default connection details:", error);
@@ -79,6 +99,41 @@ function ConnectionDetails() {
           dbname: dbName,
         };
         response = await apiClient.testPostgresConnection(currentConnectionDetails);
+      } else if (dbType === 'mysql') {
+        currentConnectionDetails = {
+          host,
+          port: parseInt(port),
+          user,
+          password,
+          database: dbName,
+        };
+        response = await apiClient.connectToMySql(currentConnectionDetails);
+      } else if (dbType === 'sqlserver') {
+        currentConnectionDetails = {
+          host,
+          port: parseInt(port),
+          user,
+          password,
+          database: dbName,
+        };
+        response = await apiClient.connectToSqlServer(currentConnectionDetails);
+      } else if (dbType === 'teradata') {
+        currentConnectionDetails = {
+          host,
+          user,
+          password,
+        };
+        response = await apiClient.connectToTeradata(currentConnectionDetails);
+      } else if (dbType === 'db2') {
+        currentConnectionDetails = {
+          database,
+          hostname,
+          port: parseInt(port),
+          protocol,
+          uid,
+          pwd,
+        };
+        response = await apiClient.connectToDb2(currentConnectionDetails);
       }
       setConnectionStatus(`Connected! ${response.message || 'Successfully connected.'}`);
       
@@ -98,39 +153,45 @@ function ConnectionDetails() {
         </Typography>
 
         <Box component="form" sx={{ '& .MuiTextField-root': { my: 1 } }}>
-          <TextField
-            fullWidth
-            label="Host"
-            value={host}
-            onChange={(e) => setHost(e.target.value)}
-            margin="normal"
-          />
+          {dbType !== 'db2' && (
+            <>
+              <TextField
+                fullWidth
+                label="Host"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                margin="normal"
+              />
 
-          <TextField
-            fullWidth
-            label="Port"
-            type="number"
-            value={port}
-            onChange={(e) => setPort(e.target.value)}
-            margin="normal"
-          />
+              {dbType !== 'teradata' && (
+                <TextField
+                  fullWidth
+                  label="Port"
+                  type="number"
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                  margin="normal"
+                />
+              )}
 
-          <TextField
-            fullWidth
-            label="User"
-            value={user}
-            onChange={(e) => setUser(e.target.value)}
-            margin="normal"
-          />
+              <TextField
+                fullWidth
+                label="User"
+                value={user}
+                onChange={(e) => setUser(e.target.value)}
+                margin="normal"
+              />
 
-          <TextField
-            fullWidth
-            label="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            margin="normal"
-          />
+              <TextField
+                fullWidth
+                label="Password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                margin="normal"
+              />
+            </>
+          )}
 
           {dbType === 'oracle' && (
             <>
@@ -156,7 +217,7 @@ function ConnectionDetails() {
             </>
           )}
 
-          {dbType === 'postgresql' && (
+          {(dbType === 'postgresql' || dbType === 'mysql' || dbType === 'sqlserver') && dbType !== 'teradata' && (
             <TextField
               fullWidth
               label="Database Name"
@@ -164,6 +225,55 @@ function ConnectionDetails() {
               onChange={(e) => setDbName(e.target.value)}
               margin="normal"
             />
+          )}
+
+          {dbType === 'db2' && (
+            <>
+              <TextField
+                fullWidth
+                label="Database"
+                value={database}
+                onChange={(e) => setDatabase(e.target.value)}
+                margin="normal"
+              />
+              <TextField
+                fullWidth
+                label="Hostname"
+                value={hostname}
+                onChange={(e) => setHostname(e.target.value)}
+                margin="normal"
+              />
+              <TextField
+                fullWidth
+                label="Port"
+                type="number"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                margin="normal"
+              />
+              <TextField
+                fullWidth
+                label="Protocol"
+                value={protocol}
+                onChange={(e) => setProtocol(e.target.value)}
+                margin="normal"
+              />
+              <TextField
+                fullWidth
+                label="User ID"
+                value={uid}
+                onChange={(e) => setUid(e.target.value)}
+                margin="normal"
+              />
+              <TextField
+                fullWidth
+                label="Password"
+                type="password"
+                value={pwd}
+                onChange={(e) => setPwd(e.target.value)}
+                margin="normal"
+              />
+            </>
           )}
 
           <Box sx={{ mt: 3 }}>

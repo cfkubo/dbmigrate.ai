@@ -1,44 +1,41 @@
+
 from fastapi import APIRouter, HTTPException
 from .. import models
-from .. import oracle_helper
-from .. import database
-import pika
-import json
+from .. import mysql_helper
 
 router = APIRouter()
 
 @router.post("/connect")
-async def connect_to_oracle(details: models.OracleConnectionDetails):
+async def connect_to_mysql(details: models.MySQLConnectionDetails):
     try:
-        schemas = oracle_helper.get_oracle_schemas(details)
+        schemas = mysql_helper.get_mysql_schemas(details)
         return {"schemas": schemas}
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/test-extraction")
-async def test_extraction(details: models.OracleConnectionDetails):
-    try:
-        message = oracle_helper.test_oracle_ddl_extraction(details)
-        return {"message": message}
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @router.post("/list-objects")
-async def list_objects(request: models.ListObjectsRequest):
+async def list_objects(request: models.ListMySQLObjectsRequest):
+    # This model will need to be updated to be generic or a new one created
+    # For now, we assume a generic model or that the client sends the correct details type
     try:
-        objects = oracle_helper.list_oracle_objects(request.connection_details, request.schema_name, request.object_type)
+        # The request model might need to be adjusted to handle different connection detail types.
+        # Assuming the client sends MySQLConnectionDetails within a compatible structure.
+        objects = mysql_helper.list_mysql_objects(request.connection_details, request.schema_name, request.object_type)
         return {"objects": objects}
-    except RuntimeError as e:
+    except (RuntimeError, ValueError) as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 from .. import queues
+import pika
+import json
+from .. import database
 
 @router.post("/extract")
-async def extract_ddl(request: models.ExtractRequest):
+async def extract_ddl(request: models.MySQLExtractRequest):
     parent_job_id = None
     try:
         parent_job_id = database.create_job(job_type='ddl_parent')
-        ddls = oracle_helper.get_oracle_ddl(request.connection_details, request.schemas, request.object_types, request.object_names, request.select_all)
+        ddls = mysql_helper.get_mysql_ddl(request.connection_details, request.schemas, request.object_types, request.object_names, request.select_all)
 
         for obj_type, objects in ddls.items():
             if obj_type == "db_name":
@@ -63,7 +60,7 @@ async def extract_ddl(request: models.ExtractRequest):
                 message = {
                     'job_id': job_id,
                     'parent_job_id': parent_job_id,
-                    'source_db_type': 'oracle',
+                    'source_db_type': 'mysql',
                     'source_connection': request.connection_details.dict(),
                     'object_type': obj_type,
                     'object_name': obj_name,

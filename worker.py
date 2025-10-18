@@ -108,7 +108,8 @@ def sql_conversion_callback(ch, method, properties, body):
 
             database.update_job_status(job_id, 'processing')
 
-            converted_sql_chunks = ai_converter.convert_oracle_to_postgres(original_sql)
+            source_db_type = data.get('source_db_type', 'oracle') # Default to oracle for backward compatibility
+            converted_sql_chunks = ai_converter.convert_ddl(original_sql, source_db_type, "postgres")
             converted_sql = "".join(converted_sql_chunks)
 
             # Verification using target connection details
@@ -126,7 +127,7 @@ def sql_conversion_callback(ch, method, properties, body):
             if not success:
                 logger.error(f" [!] Job {job_id}: Verification failed: {error_message}. Attempting self-correction.")
                 correction_prompt = f"The following PostgreSQL code failed with the error: {error_message}. Please fix it.\n\n{converted_sql}"
-                corrected_sql = "".join(ai_converter.convert_oracle_to_postgres(correction_prompt))
+                corrected_sql = "".join(ai_converter.convert_ddl(correction_prompt, source_db_type, "postgres"))
                 
                 success, error_message, verification_results = verification.verify_procedure_with_creds(
                     [corrected_sql],

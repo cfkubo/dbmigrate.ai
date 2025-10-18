@@ -5,7 +5,7 @@ from opentelemetry.trace import get_current_span
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routes import (conversion_routes, job_routes, oracle_routes,
-                     execution_routes, migration_routes)
+                     execution_routes, migration_routes, mysql_routes, sqlserver_routes, teradata_routes, db2_routes)
 from .startup import lifespan
 from .tracing import setup_tracing
 
@@ -44,6 +44,10 @@ async def add_trace_id_to_logs(request: Request, call_next):
 app.include_router(conversion_routes.router)
 app.include_router(job_routes.router)
 app.include_router(oracle_routes.router, prefix="/api/oracle")
+app.include_router(mysql_routes.router, prefix="/api/mysql")
+app.include_router(sqlserver_routes.router, prefix="/api/sqlserver")
+app.include_router(teradata_routes.router, prefix="/api/teradata")
+app.include_router(db2_routes.router, prefix="/api/db2")
 app.include_router(execution_routes.router, prefix="/api")
 app.include_router(migration_routes.router, prefix="/api")
 
@@ -68,6 +72,37 @@ async def get_default_connection_details(db_type: str):
             "user": os.getenv("POSTGRES_DB_USER", "postgres"),
             "password": os.getenv("POSTGRES_DB_PASSWORD", "postgres"),
             "dbname": os.getenv("POSTGRES_DB_NAME", "postgres"),
+        }
+    elif db_type.lower() == "mysql":
+        return {
+            "host": os.getenv("MYSQL_DB_HOST", "localhost"),
+            "port": int(os.getenv("MYSQL_DB_PORT", "3306")),
+            "user": os.getenv("MYSQL_DB_USER", "root"),
+            "password": os.getenv("MYSQL_DB_PASSWORD", "password"),
+            "database": os.getenv("MYSQL_DB_NAME", "mysql"),
+        }
+    elif db_type.lower() == "sqlserver":
+        return {
+            "host": os.getenv("SQLSERVER_DB_HOST", "localhost"),
+            "port": int(os.getenv("SQLSERVER_DB_PORT", "1433")),
+            "user": os.getenv("SQLSERVER_DB_USER", "sa"),
+            "password": os.getenv("SQLSERVER_DB_PASSWORD", "password"),
+            "database": os.getenv("SQLSERVER_DB_NAME", "master"),
+        }
+    elif db_type.lower() == "teradata":
+        return {
+            "host": os.getenv("TERADATA_DB_HOST", "localhost"),
+            "user": os.getenv("TERADATA_DB_USER", "dbc"),
+            "password": os.getenv("TERADATA_DB_PASSWORD", "dbc"),
+        }
+    elif db_type.lower() == "db2":
+        return {
+            "database": os.getenv("DB2_DATABASE", "BLUDB"),
+            "hostname": os.getenv("DB2_HOSTNAME", "localhost"),
+            "port": int(os.getenv("DB2_PORT", "50000")),
+            "protocol": os.getenv("DB2_PROTOCOL", "TCPIP"),
+            "uid": os.getenv("DB2_UID", "db2inst1"),
+            "pwd": os.getenv("DB2_PWD", "password"),
         }
     else:
         return {"detail": "Invalid database type"}, 400

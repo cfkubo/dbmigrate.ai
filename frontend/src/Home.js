@@ -252,13 +252,13 @@ function Home() {
       to: "/connect/oracle"
     },
     {
-      title: "Teradata to Greenplum",
-      sourceDb: "Teradata",
-      targetDb: "Greenplum",
-      sourceLogo: "/assets/teradata.png",
-      targetLogo: "/assets/greenplum.png",
-      description: "Convert Teradata workloads to Greenplum (Coming Soon)",
-      to: "#"
+      title: "MySQL to PostgreSQL",
+      sourceDb: "MySQL",
+      targetDb: "PostgreSQL",
+      sourceLogo: "/assets/mysql.png",
+      targetLogo: "/assets/postgres.png",
+      description: "Migrate MySQL database objects to PostgreSQL with AI assistance",
+      to: "/connect/mysql"
     },
     {
       title: "SQL Server to PostgreSQL",
@@ -266,8 +266,26 @@ function Home() {
       targetDb: "PostgreSQL",
       sourceLogo: "/assets/sqlserver.png",
       targetLogo: "/assets/postgres.png",
-      description: "Migrate from SQL Server to PostgreSQL (Coming Soon)",
-      to: "#"
+      description: "Migrate SQL Server database objects to PostgreSQL with AI assistance",
+      to: "/connect/sqlserver"
+    },
+    {
+      title: "Teradata to Greenplum",
+      sourceDb: "Teradata",
+      targetDb: "Greenplum",
+      sourceLogo: "/assets/teradata.png",
+      targetLogo: "/assets/greenplum.png",
+      description: "Convert Teradata workloads to Greenplum with AI assistance",
+      to: "/connect/teradata"
+    },
+    {
+      title: "SQL Server to PostgreSQL",
+      sourceDb: "SQL Server",
+      targetDb: "PostgreSQL",
+      sourceLogo: "/assets/sqlserver.png",
+      targetLogo: "/assets/postgres.png",
+      description: "Migrate from SQL Server to PostgreSQL with AI assistance",
+      to: "/connect/sqlserver"
     },
     {
       title: "DB2 to PostgreSQL",
@@ -275,8 +293,8 @@ function Home() {
       targetDb: "PostgreSQL",
       sourceLogo: "/assets/db2.png",
       targetLogo: "/assets/postgres.png",
-      description: "Transform DB2 database objects to PostgreSQL (Coming Soon)",
-      to: "#"
+      description: "Transform DB2 database objects to PostgreSQL with AI assistance",
+      to: "/connect/db2"
     }
   ];
 

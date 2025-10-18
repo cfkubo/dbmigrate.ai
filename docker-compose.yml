@@ -108,6 +108,55 @@ services:
     networks:
       - dbmigrateai-network
 
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: mysql
+      MYSQL_USER: root
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    networks:
+      - dbmigrateai-network
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: sqlserver
+    environment:
+      ACCEPT_EULA: Y
+      SA_PASSWORD: password
+    ports:
+      - "1433:1433"
+    networks:
+      - dbmigrateai-network
+
+  db2:
+    image: ibmcom/db2:latest
+    container_name: db2
+    environment:
+      ACCEPT_LICENSE: "yes"
+      DB2INSTANCE: db2inst1
+      DB2INST1_PASSWORD: password
+      DBNAME: BLUDB
+    ports:
+      - "50000:50000"
+    networks:
+      - dbmigrateai-network
+
+  # Teradata service - commented out as there is no public official image
+  # teradata:
+  #   image: your-private-teradata-image:latest
+  #   container_name: teradata
+  #   environment:
+  #     TERADATA_USER: dbc
+  #     TERADATA_PASSWORD: dbc
+  #   ports:
+  #     - "1025:1025"
+  #   networks:
+  #     - dbmigrateai-network
+
   api:
     build:
       context: .

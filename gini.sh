@@ -143,7 +143,85 @@ else
 fi
 sleep 5 # Give Valkey some time to start
 
-# 8. Start OpenTelemetry Collector Container
+# 8. Start MySQL Container
+echo -e "\n--- Setting up MySQL ---"
+if [ "$(docker ps -q -f name=mysql)" ]; then
+    echo "MySQL container is already running."
+elif [ "$(docker ps -aq -f status=exited -f name=mysql)" ]; then
+    echo "Starting existing MySQL container..."
+    docker start mysql
+else
+    echo "Starting new MySQL container..."
+    docker run -d --name mysql \
+        --network ${DOCKER_NETWORK} \
+        -e MYSQL_ROOT_PASSWORD=password \
+        -e MYSQL_DATABASE=mysql \
+        -e MYSQL_USER=root \
+        -e MYSQL_PASSWORD=password \
+        -p 3306:3306 \
+        mysql:8.0
+fi
+sleep 15 # Give MySQL some time to start
+
+# 9. Start SQL Server Container
+echo -e "\n--- Setting up SQL Server ---"
+if [ "$(docker ps -q -f name=sqlserver)" ]; then
+    echo "SQL Server container is already running."
+elif [ "$(docker ps -aq -f status=exited -f name=sqlserver)" ]; then
+    echo "Starting existing SQL Server container..."
+    docker start sqlserver
+else
+    echo "Starting new SQL Server container..."
+    docker run -d --name sqlserver \
+        --network ${DOCKER_NETWORK} \
+        -e ACCEPT_EULA=Y \
+        -e SA_PASSWORD=password \
+        -p 1433:1433 \
+        mcr.microsoft.com/mssql/server:2019-latest
+fi
+sleep 15 # Give SQL Server some time to start
+
+# 10. Start DB2 Container
+echo -e "\n--- Setting up DB2 ---"
+if [ "$(docker ps -q -f name=db2)" ]; then
+    echo "DB2 container is already running."
+elif [ "$(docker ps -aq -f status=exited -f name=db2)" ]; then
+    echo "Starting existing DB2 container..."
+    docker start db2
+else
+    echo "Starting new DB2 container..."
+    docker run -d --name db2 \
+        --network ${DOCKER_NETWORK} \
+        -e ACCEPT_LICENSE=yes \
+        -e DB2INSTANCE=db2inst1 \
+        -e DB2INST1_PASSWORD=password \
+        -e DBNAME=BLUDB \
+        -p 50000:50000 \
+        ibmcom/db2:latest
+fi
+sleep 60 # Give DB2 some time to start
+
+# 11. Start Teradata Container (Placeholder)
+# echo -e "\n--- Setting up Teradata ---"
+# echo "NOTE: There is no official public Docker image for Teradata."
+# echo "You must have a local or private image to run this container."
+# if [ "$(docker ps -q -f name=teradata)" ]; then
+#     echo "Teradata container is already running."
+# elif [ "$(docker ps -aq -f status=exited -f name=teradata)" ]; then
+#     echo "Starting existing Teradata container..."
+#     docker start teradata
+# else
+#     echo "Starting new Teradata container... (This will fail without a valid image)"
+#     # docker run -d --name teradata \
+#     #     --network ${DOCKER_NETWORK} \
+#     #     -e TERADATA_USER=dbc \
+#     #     -e TERADATA_PASSWORD=dbc \
+#     #     -p 1025:1025 \
+#     #     your-private-teradata-image:latest
+# fi
+# sleep 60 # Give Teradata some time to start
+
+# 12. Start OpenTelemetry Collector Container
 echo -e "\n--- Setting up OpenTelemetry Collector for Tracing ---"
 if [ "$(docker ps -q -f name=otel-collector)" ]; then
     echo "OpenTelemetry Collector container is already running."
@@ -163,7 +241,7 @@ else
 fi
 sleep 5 # Give OpenTelemetry Collector some time to start
 
-# 8. Start Jaeger Container
+# 11. Start Jaeger Container
 echo -e "\n--- Setting up Jaeger for Tracing ---"
 if [ "$(docker ps -q -f name=jaeger)" ]; then
     echo "Jaeger container is already running."

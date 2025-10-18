@@ -65,46 +65,123 @@ def get_running_model_name():
 #         raise RuntimeError(f"Error communicating with Ollama: {e}") from e
 
 
-def convert_oracle_to_postgres(oracle_sql: str, suggestions: Optional[List[str]] = None):
-    print("####### Starting conversion using Ollama from convert_oracle_to_postgres def ####### ...")
-    """Converts a block of Oracle SQL (DDL, DML, or PL/SQL) to PostgreSQL syntax.
+def convert_ddl(source_ddl: str, source_db_type: str, target_db_type: str, suggestions: Optional[List[str]] = None):
+    print(f"####### Starting conversion from {source_db_type} to {target_db_type} using Ollama ####### ...")
+    """Converts a block of SQL (DDL, DML, or PL/SQL) from a source to a target database syntax.
 
     Args:
-        oracle_sql: The Oracle SQL block to convert.
+        source_ddl: The source SQL block to convert.
+        source_db_type: The source database type (e.g., 'oracle', 'mysql').
+        target_db_type: The target database type (e.g., 'postgres').
         suggestions: Optional list of strings with conversion suggestions.
     """
     # --- Model Setup ---
     model_name = os.getenv("OLLAMA_MODEL_NAME")
     if not model_name:
-        # Assuming get_running_model_name() is defined
         model_name = get_running_model_name()
         if not model_name:
             raise RuntimeError("No Ollama model is currently running. Please run a model to start it.")
 
-    # --- Input Sanitization ---
-    # The SQL is already sanitized by the caller (sanitize_for_execution)
-    # oracle_sql = sanitize_sql(str(oracle_sql))
+    # --- Prompt Selection ---
+    prompts = {
+        ("oracle", "postgres"): f"""
+            you are an oracle sql and postgresql expert. your sole task is to accurately convert the provided oracle sql (which may be ddl, dml, or pl/sql) into equivalent, idiomatic postgresql syntax.
 
-    # --- Optimized Prompt ---
-    # The prompt now focuses purely on conversion accuracy and output format (code only).
-    prompt = f"""
-        you are an oracle sql and postgresql expert. your sole task is to accurately convert the provided oracle sql (which may be ddl, dml, or pl/sql) into equivalent, idiomatic postgresql syntax.
+            your output must consist of **only** the converted psql code. do not include any comments, explanations, apologies, leading text, or anything that is not valid postgresql.
 
-        your output must consist of **only** the converted psql code. do not include any comments, explanations, apologies, leading text, or anything that is not valid postgresql.
-
-        pay special attention to these common conversions:
-        1. handle `uuidd`, `to_date`, `nvl`, `sysdate`, and other built-in function differences.
-        2. convert oracle's `create or replace procedure` or `create or replace function` syntax to postgres' `create or replace function...language plpgsql as $$` structure.
-        3. replace oracle data types (e.g., `varchar2`, `number`) with their postgres equivalents (e.g., `varchar`, `numeric` or `int`).
+            pay special attention to these common conversions:
+            1. handle `uuidd`, `to_date`, `nvl`, `sysdate`, and other built-in function differences.
+            2. convert oracle's `create or replace procedure` or `create or replace function` syntax to postgres' `create or replace function...language plpgsql as $$` structure.
+            3. replace oracle data types (e.g., `varchar2`, `number`) with their postgres equivalents (e.g., `varchar`, `numeric` or `int`).
 
 
-        oracle sql to convert:
-        {oracle_sql}
+            oracle sql to convert:
+            {source_ddl}
 
-        {f"additional conversion notes/suggestions: {' '.join(suggestions)}" if suggestions else ""}
+            {f"additional conversion notes/suggestions: {' '.join(suggestions)}" if suggestions else ""}
 
-        postgresql result:
-    """
+            postgresql result:
+        """,
+        ("mysql", "postgres"): f"""
+            you are a mysql and postgresql expert. your sole task is to accurately convert the provided mysql sql (which may be ddl, dml, or stored procedures) into equivalent, idiomatic postgresql syntax.
+
+            your output must consist of **only** the converted psql code. do not include any comments, explanations, apologies, leading text, or anything that is not valid postgresql.
+
+            pay special attention to these common conversions:
+            1. handle `auto_increment` by using `serial` or `bigserial` columns in postgres.
+            2. convert mysql data types (e.g., `datetime`, `tinyint`, `double`) to their postgres equivalents (e.g., `timestamp`, `smallint`, `double precision`).
+            3. replace mysql-specific functions like `now()` or `ifnull()` with their postgres counterparts (`current_timestamp`, `coalesce`).
+            4. correctly handle backticks for identifiers in mysql, which are not standard in postgres (use double quotes if needed, or nothing if not required).
+            5. convert `create procedure` or `create function` syntax, paying attention to `delimiter` changes and the function body.
+
+            mysql sql to convert:
+            {source_ddl}
+
+            {f"additional conversion notes/suggestions: {' '.join(suggestions)}" if suggestions else ""}
+
+            postgresql result:
+        """,
+        ("sqlserver", "postgres"): f"""
+            you are a sql server (t-sql) and postgresql expert. your sole task is to accurately convert the provided t-sql (which may be ddl, dml, or stored procedures) into equivalent, idiomatic postgresql syntax.
+
+            your output must consist of **only** the converted psql code. do not include any comments, explanations, apologies, leading text, or anything that is not valid postgresql.
+
+            pay special attention to these common conversions:
+            1. handle `identity` columns by using `serial` or `bigserial` columns in postgres.
+            2. convert sql server data types (e.g., `datetime2`, `bit`, `money`) to their postgres equivalents (e.g., `timestamp`, `boolean`, `numeric`).
+            3. replace sql server-specific functions like `getdate()` or `isnull()` with their postgres counterparts (`current_timestamp`, `coalesce`).
+            4. correctly handle `[]` for identifiers in sql server, which are not standard in postgres (use double quotes if needed, or nothing if not required).
+            5. convert `create procedure` or `create function` syntax, paying attention to the function body and the use of `@@` variables.
+
+            t-sql to convert:
+            {source_ddl}
+
+            {f"additional conversion notes/suggestions: {' '.join(suggestions)}" if suggestions else ""}
+
+            postgresql result:
+        """,
+        ("teradata", "postgres"): f"""
+            you are a teradata and greenplum/postgresql expert. your sole task is to accurately convert the provided teradata sql (which may be ddl, dml, or macros) into equivalent, idiomatic postgresql syntax suitable for greenplum.
+
+            your output must consist of **only** the converted psql code. do not include any comments, explanations, apologies, leading text, or anything that is not valid postgresql.
+
+            pay special attention to these common conversions:
+            1. handle teradata's `set` tables, which enforce unique rows, and `multiset` tables. greenplum does not have a direct `set` equivalent, so note this or convert to a table with a unique index.
+            2. convert teradata data types (e.g., `char`, `decimal`, `byteint`) to their postgres equivalents (e.g., `char`, `numeric`, `smallint`).
+            3. replace teradata-specific functions like `index` or `substr` with their postgres counterparts (`strpos`, `substring`).
+            4. handle teradata's `bt` and `et` for transactions, which is different from postgres's `begin` and `commit`.
+            5. convert teradata macros to postgresql functions.
+
+            teradata sql to convert:
+            {source_ddl}
+
+            {f"additional conversion notes/suggestions: {' '.join(suggestions)}" if suggestions else ""}
+
+            postgresql result:
+        """,
+        ("db2", "postgres"): f"""
+            you are an ibm db2 and postgresql expert. your sole task is to accurately convert the provided db2 sql (which may be ddl, dml, or sql pl) into equivalent, idiomatic postgresql syntax.
+
+            your output must consist of **only** the converted psql code. do not include any comments, explanations, apologies, leading text, or anything that is not valid postgresql.
+
+            pay special attention to these common conversions:
+            1. handle db2's `generated by default as identity` columns by using `serial` or `bigserial` columns in postgres.
+            2. convert db2 data types (e.g., `varchar`, `decimal`, `timestamp`) to their postgres equivalents.
+            3. replace db2-specific functions and registers like `current date` or `coalesce` with their postgres counterparts (`current_date`, `coalesce`).
+            4. convert db2 stored procedures to postgresql functions, paying close attention to the declaration of variables and the overall block structure.
+
+            db2 sql to convert:
+            {source_ddl}
+
+            {f"additional conversion notes/suggestions: {' '.join(suggestions)}" if suggestions else ""}
+
+            postgresql result:
+        """
+    }
+
+    prompt = prompts.get((source_db_type.lower(), target_db_type.lower()))
+    if not prompt:
+        raise ValueError(f"Conversion from {source_db_type} to {target_db_type} is not supported.")
 
     # We convert the prompt to lowercase here primarily to set the *tone* # and *style* for the LLM, but we don't rely on it for enforcement.
     prompt = prompt.strip().lower()

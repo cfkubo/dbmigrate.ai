@@ -22,6 +22,33 @@ class OracleConnectionDetails(BaseModel):
     service_name: str | None = None
     sid: str | None = None
 
+class MySQLConnectionDetails(BaseModel):
+    host: str
+    port: int
+    user: str
+    password: str
+    database: str
+
+class SQLServerConnectionDetails(BaseModel):
+    host: str
+    port: int
+    user: str
+    password: str
+    database: str
+
+class TeradataConnectionDetails(BaseModel):
+    host: str
+    user: str
+    password: str
+
+class DB2ConnectionDetails(BaseModel):
+    database: str
+    hostname: str
+    port: int
+    protocol: str
+    uid: str
+    pwd: str
+
 class PostgresConnectionDetails(BaseModel):
     host: str
     port: int
@@ -56,6 +83,18 @@ class ListObjectsRequest(BaseModel):
     connection_details: OracleConnectionDetails
     schema_name: str
     object_type: str
+
+class ListMySQLObjectsRequest(BaseModel):
+    connection_details: MySQLConnectionDetails
+    schema_name: str
+    object_type: str
+
+class MySQLExtractRequest(BaseModel):
+    connection_details: MySQLConnectionDetails
+    schemas: list[str]
+    object_types: list[str]
+    object_names: list[str] | None = None
+    select_all: bool = False
 
 class MigrationObject(BaseModel):
     object_type: str  # e.g., 'TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION', 'INDEX', 'PACKAGE', 'TRIGGER'

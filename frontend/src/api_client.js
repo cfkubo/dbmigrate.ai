@@ -24,6 +24,22 @@ export const connectToOracle = async (connectionDetails) => {
   return callApi('/api/oracle/connect', 'POST', connectionDetails);
 };
 
+export const connectToMySql = async (connectionDetails) => {
+  return callApi('/api/mysql/connect', 'POST', connectionDetails);
+};
+
+export const connectToSqlServer = async (connectionDetails) => {
+  return callApi('/api/sqlserver/connect', 'POST', connectionDetails);
+};
+
+export const connectToTeradata = async (connectionDetails) => {
+  return callApi('/api/teradata/connect', 'POST', connectionDetails);
+};
+
+export const connectToDb2 = async (connectionDetails) => {
+  return callApi('/api/db2/connect', 'POST', connectionDetails);
+};
+
 export const listOracleObjects = async (connectionDetails, schema, objectType) => {
   return callApi('/api/oracle/list-objects', 'POST', { connection_details: connectionDetails, schema_name: schema, object_type: objectType });
 };
