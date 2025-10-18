@@ -84,7 +84,7 @@ The application follows a distributed architecture:
 - Deploy the application to a kubernetes cluster. (not yet implemented)
 - Add AI Query Optimizer for psql (not yet implemented)
 - Generate success, failure and issue Gen AI reports for each converstion (no yet implemented)
-- Guidance on Data Migration from Oracle to Postgres (This should be outsourced to ETL like tool: basic implementation in gradio py)
+- Guidance on Data Migration from Oracle to Postgres (Build intellegent dynamic pipeline that leverage external ETL like tool or leverage project like pgloader)
 
  
 ---
