@@ -366,7 +366,7 @@ function Home() {
                     opacity: 0.9
                   }}
                 >
-                  AI-powered assistant for secure database conversions
+                  AI-powered assistant for secure database metadata conversions
                 </Typography>
                 <Stack
                   direction="row"

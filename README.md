@@ -68,7 +68,7 @@ The application follows a distributed architecture:
 6.  The **Web UI** polls the API server to get the latest job status and displays it to the user.
   
 
-**Target User:** Database administrators and developers who are migrating a database from Oracle to PostgreSQL.
+**Target User:** Arhictects, Database administrators and developers who are migrating a database from Oracle to PostgreSQL.
 
 **Motivation:** The motivation behind this project is to simplify the often complex and error-prone process of migrating databases between different SQL dialects, specifically from Oracle to PostgreSQL. By leveraging AI and automation, the tool aims to reduce manual effort and increase accuracy in the conversion process.
 
