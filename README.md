@@ -83,6 +83,7 @@ The application follows a distributed architecture:
 - Containerize the application using Docker compose. (not yet implemented)
 - Deploy the application to a kubernetes cluster. (not yet implemented)
 - Add AI Query Optimizer for psql (not yet implemented)
+- Generate success, failure and issue Gen AI reports for each converstion (no yet implemented)
 - Guidance on Data Migration from Oracle to Postgres (This should be outsourced to ETL like tool: basic implementation in gradio py)
 
  
