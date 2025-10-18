@@ -51,56 +51,15 @@ from ui.gradio_callbacks import on_status_change
 from ui.gradio_callbacks import on_job_type_change
 from ui.gradio_callbacks import on_prev_click
 from ui.gradio_callbacks import on_next_click
+from ui.gradio_callbacks import get_code_metrics # Import the new function
 
 from ui.gradio_callbacks import gini_full_workflow
 
 logging.info("Imports complete")
 
 def get_code_review_data():
-    import pandas as pd
-    import os
-
-    # Get the directory of the current script to build absolute paths
-    project_root = os.path.dirname(os.path.abspath(__file__))
-
-    files_to_check = [
-        "app.py",
-        "worker.py",
-    ]
-    dirs_to_check = [
-        "api",
-        "verifier",
-        "ui",
-    ]
-
-    file_line_counts = {}
-
-    for file_path in files_to_check:
-        full_path = os.path.join(project_root, file_path)
-        if os.path.exists(full_path) and os.path.isfile(full_path):
-            try:
-                with open(full_path, 'r', encoding='utf-8') as f:
-                    file_line_counts[file_path] = len(f.readlines())
-            except Exception as e:
-                file_line_counts[file_path] = f"Error: {e}"
-
-    for dir_path in dirs_to_check:
-        full_dir_path = os.path.join(project_root, dir_path)
-        if os.path.isdir(full_dir_path):
-            for root, _, files in os.walk(full_dir_path):
-                for file in files:
-                    if file.endswith(".py"):
-                        full_path = os.path.join(root, file)
-                        relative_path = os.path.relpath(full_path, project_root)
-                        try:
-                            with open(full_path, 'r', encoding='utf-8') as f:
-                                file_line_counts[relative_path] = len(f.readlines())
-                        except Exception as e:
-                            file_line_counts[relative_path] = f"Error: {e}"
-
-    # Create a DataFrame
-    df = pd.DataFrame(list(file_line_counts.items()), columns=['File', 'Lines of Code'])
-    return df
+    # Call the new get_code_metrics function from gradio_callbacks
+    return get_code_metrics()
 
 # API_URL is now imported from config.py, no longer defined here
 # from config import API_URL # This import is not needed in app.py as API_URL is used only in gradio_callbacks.py

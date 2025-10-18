@@ -10,14 +10,6 @@ import tempfile
 from ui import api_client
 from config import API_URL # Import API_URL from the new config file
 
-
-
-
-
-
-
-
-
 def dm_connect_and_get_oracle_schemas(user, password, host, port, service_name):
     try:
         oracle_credentials = {
@@ -904,3 +896,25 @@ def on_next_click(table_name, page_num, search_term, status_filter, total_pages)
     if page_num < total_pages:
         page_num += 1
     return update_jobs_view(table_name, page_num, search_term, status_filter)
+
+def get_code_metrics():
+    root_dir = "./"
+    exclude_dirs = ['.git', '.venv', '.DS_Store', '__pycache__', 'node_modules', 'assets', 'docker', 'grafana', 'project', 'sql-assets', 'testscript', 'public']
+    file_metrics = []
+
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        # Modify dirnames in-place to exclude directories from further traversal
+        dirnames[:] = [d for d in dirnames if d not in exclude_dirs]
+
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    file_metrics.append({'File Path': filepath, 'Lines of Code': len(lines)})
+            except Exception as e:
+                # Handle encoding errors or other file read issues
+                file_metrics.append({'File Path': filepath, 'Lines of Code': f"Error: {e}"})
+    
+    df = pd.DataFrame(file_metrics)
+    return df
