@@ -1,0 +1,18 @@
+# Use a multi-arch compatible base image for SQL Server
+# mcr.microsoft.com/mssql/server:2019-latest should ideally support multi-arch,
+# but if not, we might need to specify a more generic Linux base and install SQL Server.
+# For now, let's try to explicitly build for arm64 using the existing image.
+FROM --platform=linux/arm64 mcr.microsoft.com/mssql/server:2019-latest
+
+# Set environment variables for SQL Server
+ENV ACCEPT_EULA=Y
+ENV SA_PASSWORD=password
+
+# Expose the SQL Server port
+EXPOSE 1433
+
+# No custom commands needed, the base image handles the SQL Server startup.
+# If specific initialization scripts are needed, they can be added here.
+# For example, to run SQL scripts on startup:
+# COPY ./init.sql /usr/src/app/init.sql
+# CMD /bin/bash -c "/opt/mssql/bin/sqlservr & /usr/src/app/run-init-script.sh"

@@ -9,6 +9,8 @@ router = APIRouter()
 
 @router.post("/connect")
 async def connect_to_oracle(details: models.OracleConnectionDetails):
+    if not details.service_name and not details.sid:
+        raise HTTPException(status_code=400, detail="Either service_name or sid must be provided for Oracle connection.")
     try:
         schemas = oracle_helper.get_oracle_schemas(details)
         return {"schemas": schemas}

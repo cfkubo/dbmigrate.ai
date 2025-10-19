@@ -116,7 +116,7 @@ if [ ! "$(docker ps -q -f name=^/${DB_CONTAINER_NAME}$)" ]; then
         docker start ${DB_CONTAINER_NAME}
     else
         echo "Starting a new PostgreSQL container..."
-        docker run -d --name ${DB_CONTAINER_NAME} \
+        docker run -d --name postgres \
             --network ${DOCKER_NETWORK} \
             -e POSTGRES_DB=${POSTGRES_DB} \
             -e POSTGRES_USER=${POSTGRES_USER} \
@@ -153,13 +153,13 @@ elif [ "$(docker ps -aq -f status=exited -f name=mysql)" ]; then
 else
     echo "Starting new MySQL container..."
     docker run -d --name mysql \
-        --network ${DOCKER_NETWORK} \
-        -e MYSQL_ROOT_PASSWORD=password \
-        -e MYSQL_DATABASE=mysql \
-        -e MYSQL_USER=root \
-        -e MYSQL_PASSWORD=password \
-        -p 3306:3306 \
-        mysql:8.0
+    --network ${DOCKER_NETWORK} \
+    -e MYSQL_ROOT_PASSWORD=password \
+    -e MYSQL_DATABASE=mydb \
+    -p 3306:3306 \
+    -v mysql_data:/var/lib/mysql \
+    mysql:8
+
 fi
 sleep 15 # Give MySQL some time to start
 
@@ -172,12 +172,15 @@ elif [ "$(docker ps -aq -f status=exited -f name=sqlserver)" ]; then
     docker start sqlserver
 else
     echo "Starting new SQL Server container..."
+    docker build -t dbmigrateai-sqlserver:latest -f docker/Dockerfile.sqlserver --platform linux/arm64 .
     docker run -d --name sqlserver \
         --network ${DOCKER_NETWORK} \
         -e ACCEPT_EULA=Y \
         -e SA_PASSWORD=password \
         -p 1433:1433 \
-        mcr.microsoft.com/mssql/server:2019-latest
+        --shm-size=1g \
+        --memory=2g \
+        dbmigrateai-sqlserver:latest
 fi
 sleep 15 # Give SQL Server some time to start
 
@@ -190,14 +193,11 @@ elif [ "$(docker ps -aq -f status=exited -f name=db2)" ]; then
     docker start db2
 else
     echo "Starting new DB2 container..."
+    docker build -t dbmigrateai-db2:latest -f docker/Dockerfile.db2 --platform linux/arm64 .
     docker run -d --name db2 \
         --network ${DOCKER_NETWORK} \
-        -e ACCEPT_LICENSE=yes \
-        -e DB2INSTANCE=db2inst1 \
-        -e DB2INST1_PASSWORD=password \
-        -e DBNAME=BLUDB \
         -p 50000:50000 \
-        ibmcom/db2:latest
+        dbmigrateai-db2:latest
 fi
 sleep 60 # Give DB2 some time to start
 

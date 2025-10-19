@@ -114,32 +114,33 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: mysql
-      MYSQL_USER: root
-      MYSQL_PASSWORD: password
     ports:
       - "3306:3306"
     networks:
       - dbmigrateai-network
 
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2019-latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sqlserver
+      platform: linux/arm64
     container_name: sqlserver
     environment:
       ACCEPT_EULA: Y
       SA_PASSWORD: password
     ports:
       - "1433:1433"
+    shm_size: '1g'
+    mem_limit: 2g
     networks:
       - dbmigrateai-network
 
   db2:
-    image: ibmcom/db2:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.db2
+      platform: linux/arm64
     container_name: db2
-    environment:
-      ACCEPT_LICENSE: "yes"
-      DB2INSTANCE: db2inst1
-      DB2INST1_PASSWORD: password
-      DBNAME: BLUDB
     ports:
       - "50000:50000"
     networks:
