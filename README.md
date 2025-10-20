@@ -5,7 +5,7 @@ This project is experimental and may not cover all edge cases in SQL conversion.
 
 Blog Post: [DbMigrate.AI - An AI-Powered Database Migration Assistant](https://site.arullab.com/posts/DBMIGRATEAI/)
 
-<iframe width="1151" height="648" src="https://www.youtube.com/embed/SRfkZn_p-p0" title="DbmigrateAI - Private AI Assistant for DB Migration" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+Demo: [https://youtu.be/SRfkZn_p-p0](https://youtu.be/SRfkZn_p-p0)
 
 ![logo](assets/dbmigrate.png)
  
